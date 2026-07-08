@@ -6,8 +6,14 @@
 //! is the single source of truth that keeps the server and client from
 //! drifting.
 //!
-//! This is a skeleton reservation release; real functionality lands in a later
-//! version. See <https://github.com/EYH0602/bara>.
+//! See <https://github.com/EYH0602/bara>.
+
+pub mod manifest;
+
+pub use manifest::{
+    Binding, BindingRole, Claim, ClaimId, Link, LinkKind, Manifest, Node, NodeFields, NodeId,
+    NodeKind,
+};
 
 /// Returns the version of `ara-core`, taken from the crate manifest.
 pub fn version() -> &'static str {
