@@ -8,6 +8,7 @@
 //!
 //! See <https://github.com/EYH0602/bara>.
 
+mod claims;
 pub mod manifest;
 mod schema;
 
