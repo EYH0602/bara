@@ -1,0 +1,19 @@
+[package]
+name = "ara-cli"
+description = "Command-line runtime for the ARA viewer: validate and serve Agent-Native Research Artifacts. Installs the `ara` binary."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
+
+[[bin]]
+name = "ara"
+path = "src/main.rs"
+
+[dependencies]

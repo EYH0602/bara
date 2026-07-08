@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MPL-2.0"
+repository = "https://github.com/EYH0602/bara"
+authors = ["Yifeng He <yfhe.prsn@gmail.com>"]
+homepage = "https://github.com/EYH0602/bara"
+keywords = ["ara", "research", "viewer", "dag", "wasm"]
+categories = ["command-line-utilities", "visualization"]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
