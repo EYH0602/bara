@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # Keep the exact Cargo pins fresh via reviewed PRs (not auto-merge).
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+  # Keep the SHA-pinned GitHub Actions fresh the same way.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
