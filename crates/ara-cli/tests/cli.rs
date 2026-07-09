@@ -118,3 +118,79 @@ fn missing_tree_file_is_clean_error() {
         .failure()
         .stdout(predicate::str::contains("cannot read"));
 }
+
+// ── Layout command tests ──────────────────────────────────────────────────
+
+#[test]
+fn layout_json_produces_valid_positioned_manifest() {
+    let output = ara()
+        .arg("layout")
+        .arg(official("minimal-artifact"))
+        .arg("--json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let manifest: serde_json::Value = serde_json::from_slice(&output).expect("valid JSON");
+    // Has nodes with pos
+    let nodes = manifest["nodes"].as_array().unwrap();
+    assert!(!nodes.is_empty());
+    for node in nodes {
+        assert!(node.get("pos").is_some(), "node missing pos: {node}");
+        let pos = &node["pos"];
+        assert!(pos["x"].as_f64().unwrap().is_finite());
+        assert!(pos["y"].as_f64().unwrap().is_finite());
+    }
+    // Has bounds
+    let bounds = &manifest["bounds"];
+    assert!(bounds["width"].as_f64().unwrap() > 0.0);
+    assert!(bounds["height"].as_f64().unwrap() > 0.0);
+}
+
+#[test]
+fn layout_missing_dir_exits_nonzero() {
+    ara()
+        .arg("layout")
+        .arg("/no/such/ara/dir")
+        .arg("--json")
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("layout skipped"));
+}
+
+#[test]
+fn layout_parse_error_skips_layout() {
+    let cycle_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cycle-dir");
+    ara()
+        .arg("layout")
+        .arg(&cycle_dir)
+        .arg("--json")
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("layout skipped"));
+}
+
+#[test]
+fn validate_layout_flag_shows_counts_and_bounds() {
+    ara()
+        .arg("validate")
+        .arg(official("minimal-artifact"))
+        .arg("--layout")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("node(s)"))
+        .stdout(predicate::str::contains("bounds"));
+}
+
+#[test]
+fn validate_layout_on_error_matches_validate() {
+    let cycle_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cycle-dir");
+    ara()
+        .arg("validate")
+        .arg(&cycle_dir)
+        .arg("--layout")
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("cycle"));
+}
