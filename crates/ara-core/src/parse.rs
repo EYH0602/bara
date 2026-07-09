@@ -585,4 +585,85 @@ tree:
         let err = parse_sources(yaml, None).unwrap_err();
         assert!(err.errors().iter().any(|d| d.message.contains("cycle")));
     }
+
+    #[test]
+    fn missing_node_id_is_error() {
+        // A node with no `id` is dropped with an ERROR (data-dropping path).
+        let err = parse_sources("tree:\n  - type: question\n    title: q\n", None).unwrap_err();
+        assert!(
+            err.errors()
+                .iter()
+                .any(|d| d.message.contains("missing an `id`")),
+            "expected missing-id error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn duplicate_claim_id_is_error() {
+        // `claims.rs` surfaces the dup as data; `parse_sources` turns it into the
+        // `claims[{id}]` ERROR diagnostic.
+        let err = parse_sources(MINIMAL, Some("## C01: A\n## C01: B\n")).unwrap_err();
+        assert!(
+            err.errors()
+                .iter()
+                .any(|d| d.path.contains("claims[C01]") && d.message.contains("duplicate claim id")),
+            "expected duplicate-claim-id error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn missing_type_warns() {
+        // Distinct from the unknown-type branch: an absent `type:` warns (WARNING),
+        // and the node still parses as `Other`.
+        let (m, report) = parse_sources("tree:\n  - id: N01\n    title: q\n", None).expect("ok");
+        assert_eq!(m.nodes[0].kind, NodeKind::Other(String::new()));
+        assert!(
+            report
+                .warnings()
+                .iter()
+                .any(|d| d.message.contains("missing a `type`")),
+            "expected missing-type warning, got: {report}"
+        );
+    }
+
+    #[test]
+    fn unknown_type_dropped_body_field_warns() {
+        // An unknown-typed node carrying a canonical body field warns that the
+        // field is dropped, so nothing is lost silently.
+        let yaml = "tree:\n  - id: N01\n    type: hypothesis\n    result: 28.4 BLEU\n";
+        let (m, report) = parse_sources(yaml, None).expect("ok");
+        assert_eq!(m.nodes[0].kind, NodeKind::Other("hypothesis".into()));
+        assert!(
+            report.warnings().iter().any(|d| d
+                .message
+                .contains("`result` dropped for unknown type `hypothesis`")),
+            "expected dropped-field warning, got: {report}"
+        );
+    }
+
+    #[test]
+    fn duplicate_link_warns() {
+        // A repeated `also_depends_on` target yields two identical DependsOn links;
+        // `dedupe_links` keeps the first and warns on the duplicate. Two siblings
+        // keep the graph acyclic.
+        let yaml = "\
+tree:
+  - id: N01
+    type: question
+    children:
+      - id: N02
+        type: experiment
+        also_depends_on: [N03, N03]
+      - id: N03
+        type: insight
+";
+        let (_m, report) = parse_sources(yaml, None).expect("ok");
+        assert!(
+            report
+                .warnings()
+                .iter()
+                .any(|d| d.message.contains("duplicate") && d.message.contains("link to `N03`")),
+            "expected duplicate-link warning, got: {report}"
+        );
+    }
 }
