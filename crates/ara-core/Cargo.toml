@@ -17,6 +17,7 @@ readme = "README.md"
 exclude = ["tests/fixtures/**"]
 
 [dependencies]
+dagre-dgl-rs = "=0.1.1"
 serde = { version = "1", features = ["derive"] }
 serde-saphyr = { version = "=0.0.29", default-features = false, features = ["deserialize"] }
 
