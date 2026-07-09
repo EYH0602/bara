@@ -1,0 +1,9 @@
+# Both `tree:` and `root:` are present -> ambiguous root error.
+tree:
+  - id: N01
+    type: question
+    title: "Tree root"
+root:
+  id: N02
+  type: insight
+  title: "Single root"

@@ -156,7 +156,7 @@ pub struct Link {
 }
 
 /// Kind of a node → node edge.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LinkKind {
     /// Nesting edge, from `children:`.

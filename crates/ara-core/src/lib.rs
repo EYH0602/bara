@@ -10,12 +10,19 @@
 
 mod claims;
 pub mod manifest;
+mod parse;
+pub mod report;
 mod schema;
 
 pub use manifest::{
     Binding, BindingRole, Claim, ClaimId, Link, LinkKind, Manifest, Node, NodeFields, NodeId,
     NodeKind,
 };
+pub use report::{Diagnostic, ParseReport, Severity};
+
+#[cfg(feature = "native")]
+pub use parse::parse_dir;
+pub use parse::parse_sources;
 
 /// Returns the version of `ara-core`, taken from the crate manifest.
 pub fn version() -> &'static str {
