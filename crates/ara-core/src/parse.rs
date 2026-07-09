@@ -7,7 +7,7 @@
 //! nodes are pre-order DFS, links/bindings follow source order. Nothing is
 //! sorted by id.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::claims::parse_claims;
 use crate::manifest::{
@@ -359,11 +359,13 @@ fn dedupe_links(links: Vec<Link>, report: &mut ParseReport) -> Vec<Link> {
 /// Reports a cycle error for every back-edge in the combined
 /// `Child` + `DependsOn` graph (DFS three-color).
 fn detect_cycles(nodes: &[Node], links: &[Link], report: &mut ParseReport) {
-    let mut adj: HashMap<&NodeId, Vec<&NodeId>> = HashMap::new();
+    // BTreeMap (not HashMap) keeps traversal — and thus error ordering — free of
+    // any hash-seed influence, matching the crate's determinism guarantee.
+    let mut adj: BTreeMap<&NodeId, Vec<&NodeId>> = BTreeMap::new();
     for link in links {
         adj.entry(&link.from).or_default().push(&link.to);
     }
-    let mut color: HashMap<&NodeId, u8> = HashMap::new(); // 0=white, 1=gray, 2=black
+    let mut color: BTreeMap<&NodeId, u8> = BTreeMap::new(); // 0=white, 1=gray, 2=black
     for node in nodes {
         if color.get(&node.id).copied().unwrap_or(0) == 0 {
             visit(&node.id, &adj, &mut color, report);
@@ -373,8 +375,8 @@ fn detect_cycles(nodes: &[Node], links: &[Link], report: &mut ParseReport) {
 
 fn visit<'a>(
     u: &'a NodeId,
-    adj: &HashMap<&'a NodeId, Vec<&'a NodeId>>,
-    color: &mut HashMap<&'a NodeId, u8>,
+    adj: &BTreeMap<&'a NodeId, Vec<&'a NodeId>>,
+    color: &mut BTreeMap<&'a NodeId, u8>,
     report: &mut ParseReport,
 ) {
     color.insert(u, 1);
@@ -519,5 +521,68 @@ tree:
         let (a, _) = parse_sources(MINIMAL, Some(CLAIMS)).expect("ok");
         let (b, _) = parse_sources(MINIMAL, Some(CLAIMS)).expect("ok");
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn broken_node_to_node_ref_is_error() {
+        let yaml = "\
+tree:
+  - id: N01
+    type: question
+    children:
+      - id: N02
+        type: experiment
+        also_depends_on: [N99]
+";
+        let err = parse_sources(yaml, None).unwrap_err();
+        assert!(
+            err.errors()
+                .iter()
+                .any(|d| d.message.contains("unknown node") && d.path.contains("also_depends_on")),
+            "expected broken node->node error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn broken_claim_to_claim_dep_is_error() {
+        // C01 depends on C99, which does not exist.
+        let claims = "## C01: A\n- **Dependencies**: [C99]\n";
+        let err = parse_sources(MINIMAL, Some(claims)).unwrap_err();
+        assert!(
+            err.errors()
+                .iter()
+                .any(|d| d.message.contains("unknown claim") && d.path.contains("dependencies")),
+            "expected broken claim->claim error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn proof_evidence_refs_emit_no_error() {
+        // `E##` proof refs are stored raw and must never produce a diagnostic.
+        let claims = "## C01: A\n- **Statement**: s\n- **Proof**: [E01, E02]\n";
+        let (m, report) = parse_sources(MINIMAL, Some(claims)).expect("ok");
+        assert_eq!(m.claims[0].proof, vec!["E01", "E02"]);
+        // Success with no errors at all: E## refs are opaque, never validated.
+        assert!(report.is_ok());
+        assert!(report.errors().is_empty());
+    }
+
+    #[test]
+    fn sibling_only_depends_on_cycle_is_detected() {
+        // Cycle formed purely by DependsOn edges between siblings (no Child edge).
+        let yaml = "\
+tree:
+  - id: N01
+    type: question
+    children:
+      - id: N02
+        type: experiment
+        also_depends_on: [N03]
+      - id: N03
+        type: insight
+        also_depends_on: [N02]
+";
+        let err = parse_sources(yaml, None).unwrap_err();
+        assert!(err.errors().iter().any(|d| d.message.contains("cycle")));
     }
 }

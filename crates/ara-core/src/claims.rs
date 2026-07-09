@@ -88,12 +88,12 @@ pub(crate) fn parse_claims(md: &str) -> ParsedClaims {
 /// and deeper/shallower headers return `None`.
 fn parse_header(line: &str) -> Option<(String, String)> {
     let rest = line.trim_start().strip_prefix("## ")?;
-    let colon = rest.find(':')?;
-    let id = rest[..colon].trim();
+    let (raw_id, raw_title) = rest.split_once(':')?;
+    let id = raw_id.trim();
     if !is_canonical_id(id, 'C') {
         return None;
     }
-    let title = rest[colon + 1..].trim();
+    let title = raw_title.trim();
     if title.is_empty() {
         return None;
     }
@@ -110,11 +110,10 @@ fn parse_bullet(line: &str) -> Option<(String, String)> {
     let t = line.trim_start();
     let rest = t.strip_prefix("- ").or_else(|| t.strip_prefix("* "))?;
     let rest = rest.trim_start().strip_prefix("**")?;
-    let end = rest.find("**")?;
-    let key = rest[..end].trim();
-    let after = rest[end + 2..].trim_start();
+    let (key, rest_after) = rest.split_once("**")?;
+    let after = rest_after.trim_start();
     let value = after.strip_prefix(':').unwrap_or(after).trim();
-    Some((key.to_string(), value.to_string()))
+    Some((key.trim().to_string(), value.to_string()))
 }
 
 /// Extracts every `^<prefix>\d+$` token, splitting on non-alphanumeric

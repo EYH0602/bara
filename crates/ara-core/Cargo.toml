@@ -14,7 +14,6 @@ readme = "README.md"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde-saphyr = { version = "=0.0.29", default-features = false, features = ["deserialize"] }
-thiserror = "2"
 
 [dev-dependencies]
 insta = { version = "1", features = ["json"] }
