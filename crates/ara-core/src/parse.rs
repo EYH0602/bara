@@ -137,6 +137,7 @@ pub fn parse_sources(
         links,
         bindings: norm.bindings,
         claims,
+        bounds: None,
     };
 
     if norm.report.is_ok() {
@@ -226,6 +227,7 @@ impl Normalizer {
             description: raw.description.clone(),
             fields,
             evidence_notes,
+            pos: None,
         });
         self.also.push((id.clone(), raw.also_depends_on.clone()));
 

@@ -11,6 +11,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::layout::{Point, Rect};
+
 /// A node identifier (`^N\d+$`, case-sensitive, trimmed).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -90,6 +92,9 @@ pub struct Manifest {
     pub bindings: Vec<Binding>,
     /// Claim content, for the viewer.
     pub claims: Vec<Claim>,
+    /// Bounding rectangle enclosing all laid-out nodes. Populated by layout.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bounds: Option<Rect>,
 }
 
 /// One exploration node.
@@ -111,6 +116,9 @@ pub struct Node {
     pub fields: NodeFields,
     /// Free-text evidence entries (the non-`C##` part of `evidence:`).
     pub evidence_notes: Vec<String>,
+    /// Center position assigned by layout. Absent when layout has not run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pos: Option<Point>,
 }
 
 /// The five canonical node types, plus a preserved escape hatch.
