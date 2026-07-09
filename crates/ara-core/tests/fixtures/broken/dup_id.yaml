@@ -1,0 +1,8 @@
+# Two sibling nodes share the id N01 -> duplicate node id error.
+tree:
+  - id: N01
+    type: question
+    title: "First N01"
+  - id: N01
+    type: insight
+    title: "Second N01 (duplicate)"

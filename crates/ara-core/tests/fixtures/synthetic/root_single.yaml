@@ -1,0 +1,11 @@
+# Synthetic `root:` (single-root) dialect fixture. Not from the official corpus;
+# used to check that `root:` normalizes to the same Manifest shape as `tree:`.
+root:
+  id: N01
+  type: question
+  title: "Single-root dialect question"
+  children:
+    - id: N02
+      type: experiment
+      title: "A child experiment"
+      result: "some result"

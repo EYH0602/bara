@@ -1,0 +1,7 @@
+# Node evidence references a claim id that does not exist in claims.md.
+# Parsed WITH a claims source that lacks C99 -> broken node->claim error.
+tree:
+  - id: N01
+    type: experiment
+    title: "References a missing claim"
+    evidence: [C99, "Table 1"]
