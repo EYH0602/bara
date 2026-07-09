@@ -70,8 +70,10 @@ no-panic + report-produced. Stays offline and `--locked`-friendly.
 
 Pinned commit: `3fe7ab4d08f68555d8c4661fa2b4fbfd4d597fd8`.
 
-> Note: the `pivot` node type appears only in `ARA-Demo/nanogpt_ara`
-> (unlicensed) → it can only be covered by the submodule sweep, not vendored.
+> Note: the `pivot` node type appears only in `ARA-Demo/nanogpt_ara`, which is
+> **unlicensed today** → it can only be covered by the submodule sweep, not
+> vendored, **until** the ARA-Demo license lands (expected — the bara author
+> knows the ARA founder). See "Fast-follow" below.
 
 ### Part 2 — Submodule full sweep (opt-in, maintainer-run)
 
@@ -149,6 +151,19 @@ lives. Required CI does **not** check out submodules.
       the default job.
 - [x] Follow-up filed upstream asking `ARA-Labs/ARA-Demo` to add a license.
       *(filed — paste URL here)*
+
+## Fast-follow (once ARA-Demo's LICENSE actually merges upstream)
+
+The ARA-Demo license is **expected** but not present yet. We do **not** vendor
+its files on assumption — redistributing all-rights-reserved files before the
+license exists is exactly what the issue warns against, and is hard to scrub
+from git history. When the LICENSE actually merges upstream:
+
+- Vendor `ARA-Demo/nanogpt_ara` into `fixtures/corpus/` (two files + attribution
+  in `corpus/SOURCE.md`, pinned commit `8f184717…`), which pulls the **`pivot`
+  node type into the hermetic always-on check** — the one drift dimension
+  currently reachable only via the opt-in submodule sweep.
+- Until then, `pivot` coverage lives in the submodule sweep only.
 
 ## Out of scope (explicitly deferred)
 
