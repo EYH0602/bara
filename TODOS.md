@@ -70,6 +70,12 @@ cold. Remove an item when it lands.
   artifact (`rebench-restricted_mlm`) is `ara-2.0` and does not use `tree:` at
   all. See `docs/ara-format-feedback.md` §13. Decision (2026-07-08): ship Stage 1
   canonical-only, defer this widening.
+- **Status (2026-07-09, issue #3):** still open — widening is deferred. Issue #3
+  added a separate **no-panic regression net** (vendored `ara-paperbench` subset
+  + opt-in submodule sweep in `crates/ara-core/tests/corpus_no_panic.rs`) that
+  proves the parser never unwind-panics on real data and always produces a
+  `ParseReport`. That is *not* this task: it does not parse real artifacts
+  cleanly, it only guards robustness. Keep the two distinct.
 - **Depends on:** none (can start any time); overlaps with T-ARA-SCHEMA if the
   maintainer publishes a schema first.
 
