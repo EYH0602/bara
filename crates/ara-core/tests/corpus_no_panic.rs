@@ -23,9 +23,11 @@
 //! build profile ever sets `panic = "abort"`, `catch_unwind` becomes a no-op and
 //! this net stops catching anything. None do today; keep it that way.
 
+#[cfg(feature = "native")]
 use std::path::{Path, PathBuf};
 
 /// Repo root, derived from this crate's manifest dir (`crates/ara-core`).
+#[cfg(feature = "native")]
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -38,6 +40,7 @@ fn repo_root() -> PathBuf {
 /// Uses only `std::fs` (no `walkdir` dependency). The result is **sorted** so a
 /// failure message lists artifacts deterministically. Missing/unreadable dirs
 /// yield an empty result rather than panicking — callers guard on the count.
+#[cfg(feature = "native")]
 fn discover_artifacts(root: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
     collect(root, &mut found);
@@ -45,6 +48,7 @@ fn discover_artifacts(root: &Path) -> Vec<PathBuf> {
     found
 }
 
+#[cfg(feature = "native")]
 fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
     if dir.join("trace/exploration_tree.yaml").is_file() {
         out.push(dir.to_path_buf());
@@ -53,9 +57,16 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>) {
         return;
     };
     for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect(&path, out);
+        // Skip symlinks: the opt-in sweep walks less-controlled submodule
+        // content, and a symlinked directory cycle would recurse until the
+        // stack overflows — an abort `catch_unwind` cannot catch, which is
+        // exactly the failure mode this net exists to avoid. `file_type` does
+        // not follow the link, unlike `path.is_dir()`.
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+        if file_type.is_dir() && !file_type.is_symlink() {
+            collect(&entry.path(), out);
         }
     }
 }

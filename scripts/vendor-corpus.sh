@@ -58,9 +58,11 @@ else
   CLEANUP_DIR="$(mktemp -d)"
   CHECKOUT="$CLEANUP_DIR/ara-paperbench"
   echo "Cloning $UPSTREAM_URL at $PINNED_COMMIT ..."
-  git clone --filter=blob:none --no-checkout "$UPSTREAM_URL" "$CHECKOUT" >/dev/null 2>&1
-  git -C "$CHECKOUT" fetch --depth 1 origin "$PINNED_COMMIT" >/dev/null 2>&1
-  git -C "$CHECKOUT" checkout "$PINNED_COMMIT" >/dev/null 2>&1
+  # Suppress git's progress chatter (>/dev/null) but let stderr through so a
+  # clone/fetch failure under `set -e` is diagnosable rather than silent.
+  git clone --filter=blob:none --no-checkout "$UPSTREAM_URL" "$CHECKOUT" >/dev/null
+  git -C "$CHECKOUT" fetch --depth 1 origin "$PINNED_COMMIT" >/dev/null
+  git -C "$CHECKOUT" checkout "$PINNED_COMMIT" >/dev/null
 fi
 
 # --- Copy the subset --------------------------------------------------------
