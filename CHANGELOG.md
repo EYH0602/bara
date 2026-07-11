@@ -6,8 +6,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.1.1] - 2026-07-11
-
 ### Added
 - Viewer: **Tree display mode** — an alternate DOM indented tree-list rendering
   of the exploration graph, reproducing the published `research-visualizer`
@@ -25,11 +23,6 @@ All notable changes to this project are documented here. The format follows
 - Core: `Node.isolated` boolean manifest field (serde-default `false`, omitted
   from the wire form when false) marking the root of an isolated subtree; drives
   the tree mode's isolated-subtree box. Old manifests round-trip unchanged. (#7)
-- Viewer: selectable layout modes for the map/detail panes via a segmented
-  toggle in the header — **Stack** (map on top at full width, detail below; the
-  new default, matching the wide exploration-DAG shape) and **Split** (map left,
-  detail right; the previous side-by-side behaviour). Session-only; narrow
-  viewports always stack. (#9)
 
 ### Changed
 - Viewer: node kind glyphs now use the published `research-visualizer` set —
@@ -37,6 +30,17 @@ All notable changes to this project are documented here. The format follows
   stays `Q`) — read from the single `kind_meta` source by both the SVG graph and
   the new tree-list. This visibly restyles the existing SVG graph's node glyphs.
   (#7)
+
+## [0.1.1] - 2026-07-11
+
+### Added
+- Viewer: selectable layout modes for the map/detail panes via a segmented
+  toggle in the header — **Stack** (map on top at full width, detail below; the
+  new default, matching the wide exploration-DAG shape) and **Split** (map left,
+  detail right; the previous side-by-side behaviour). Session-only; narrow
+  viewports always stack. (#9)
+
+### Changed
 - Build: `scripts/embed-viewer.sh` is now the canonical way to regenerate the
   viewer bundle baked into `ara-cli`, and a new CI job (`viewer-embed-fresh`)
   runs `--check` to fail a PR when the ara-viewer frontend source changes without
