@@ -46,7 +46,7 @@ cargo run -- completions bash
 The project follows [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 The version is stored in `Cargo.toml` under `[workspace.package] version`.
 
-- **Patch version** (`0.2.x` → `0.2.x+1`): bump for every PR that changes functional code. Each such PR is squash-merged into the release branch.
+- **Patch version** (`0.1.x` → `0.1.x+1`): bump for every PR that changes functional code. Each such PR is squash-merged into the release branch.
 - **Minor version** (`0.x` → `0.x+1`): bump when cutting a release (e.g. alpha → beta, beta → stable). Release branches are merged with a merge commit.
 - **Major version**: reserved for breaking changes to public interfaces.
 
@@ -56,7 +56,7 @@ The version is stored in `Cargo.toml` under `[workspace.package] version`.
 - Every PR **that changes functional code** must add an entry to `CHANGELOG.md` under the `## [Unreleased]` section.
 - Non-functional PRs (docs, comments, formatting, CI/tooling with no behavior change) do **not** require a version bump or changelog entry.
 - When merging a release branch (e.g. `release/beta` → `main`), bump the minor version and move `[Unreleased]` entries under a versioned heading.
-- The current release track is `0.2.x` (beta).
+- The current release track is `0.1.x` (initial release track).
 
 ### CHANGELOG format
 
