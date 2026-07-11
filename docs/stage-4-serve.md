@@ -1,0 +1,119 @@
+# Stage 4 — `ara serve`: local server + live reload
+
+Design record for the server shipped in Stage 4 (PR #8). It turns the static
+Stage-3 viewer into a live tool: `ara serve <dir>` serves the web client, serves
+the parsed manifest as JSON, streams evidence figures, and — as you edit the
+artifact — reparses and pushes an update that refreshes the graph **without
+losing pan/zoom or selection**.
+
+Companion docs: [`stage-3-viewer.md`](stage-3-viewer.md) (the client this serves)
+and [`manifest-schema.md`](manifest-schema.md) (the wire shape).
+
+## Shape
+
+An [axum](https://docs.rs/axum) 0.8 server, native-only, living in
+`crates/ara-cli/src/serve/`:
+
+| File | Responsibility |
+| ---- | -------------- |
+| `mod.rs` | `ServeArgs`, runtime bootstrap, router, request handlers, `reparse_and_swap` |
+| `cache.rs` | `CachedAra` — parse once, serialise once, content-hash the ETag |
+| `assets.rs` | Viewer delivery: embedded (`include_dir!`) or `--assets <dir>` |
+| `watch.rs` | Debounced `notify` file watcher (`--poll` backend) |
+
+```bash
+ara serve ./my-ara                 # embedded viewer, http://127.0.0.1:8080
+ara serve ./my-ara --port 3000
+ara serve ./my-ara --assets ./dist # on-disk Trunk build instead of embedded
+ara serve ./my-ara --poll          # polling watcher (network / bind mounts)
+```
+
+The server binds `127.0.0.1` only — it is a local dev tool, not a hub (that is
+Stage 5).
+
+## Resolved design decisions
+
+Two forks the plan left open, decided with the maintainer:
+
+1. **Asset delivery — embed by default, `--assets` to override.** `ara-cli` bakes
+   a `trunk build --release` viewer into the binary via `include_dir!`
+   (`crates/ara-cli/assets/viewer/`), so `cargo install ara-cli` → `ara serve`
+   works with zero config (resolves `T-VIEWER-DIST-PACKAGING`). `--assets <dir>`
+   serves an on-disk `dist/` (dev + the Stage-5 Docker `--assets /assets` model)
+   through `tower-http` `ServeDir` with `precompressed_br()/gzip()`. Committing
+   the built wasm (~300 KB) is the accepted cost of the embed-by-default UX; it is
+   refreshed at release.
+2. **Client mode auto-detection (one wasm bundle).** The client tries
+   `/api/manifest`, falls back to the static `manifest.json` on 404/network error,
+   and always attempts the `/api/live` WebSocket (inert if it never opens). The
+   same bundle therefore works under both `ara serve` and static hosting
+   (`trunk serve`, GitHub Pages).
+
+## Parse-once cache
+
+`CachedAra` (`cache.rs`) parses + lays out the directory once, serialises the
+manifest to JSON a single time, and hands out cheap `Arc<Bytes>` clones per
+request:
+
+```rust
+struct CachedAra {
+    manifest: Arc<Manifest>,
+    manifest_json: Arc<Bytes>,   // serialised once
+    etag: String,                // content hash of manifest_json, quoted
+    figures_dir: PathBuf,        // <dir>/evidence
+}
+// held as Arc<ArcSwap<CachedAra>>
+```
+
+The ETag is a `DefaultHasher` content hash of the serialised manifest: identical
+bytes ⇒ identical tag, any edit moves it. `DefaultHasher` is deterministic for a
+process run — the only lifetime an `If-None-Match` validator must survive.
+
+## Routes
+
+- `GET /` + assets → embedded handler (correct `.wasm` MIME, `no-cache` for
+  `index.html`/`manifest.json`, `immutable` for fingerprinted bundles) or the
+  `--assets` `ServeDir`. Unknown paths fall back to `index.html` (CSR routing).
+- `GET /api/manifest` → the cached `Arc<Bytes>` JSON with a strong `ETag`,
+  `Cache-Control: no-cache`, and `304` on a matching `If-None-Match`.
+- `GET /api/figure/{*path}` → `ServeDir` over `<dir>/evidence`: range requests
+  and `..`-traversal rejection come for free from `tower-http`.
+- `GET /api/live` → a WebSocket that forwards the new ETag on every reparse.
+  Broadcast `Lagged` is handled by skipping missed ETags, not dropping the
+  socket.
+
+## Live reload
+
+`watch.rs` runs a `notify-debouncer-full` watcher over the ARA directory
+(300 ms debounce; `--poll` selects the polling backend for network/bind mounts).
+A debounced change wakes an async task that calls `reparse_and_swap`:
+
+1. reparse + lay out the directory,
+2. on success, `ArcSwap::store` the new `CachedAra` and broadcast its ETag,
+3. **on parse failure, keep the last-good manifest** — a mid-edit broken file
+   logs a warning instead of blanking the view.
+
+The client (`crates/ara-viewer/src/source.rs`, `connect_live`) re-fetches
+`/api/manifest` on every WebSocket message and swaps the manifest signal.
+Pan/zoom/selection survive because those signals live in `App` and are untouched
+by the swap.
+
+## What is deferred
+
+- **`--full-reload`** (a `tower-livereload` whole-page reload) — the in-place
+  WebSocket reload supersedes it, so the flag is not shipped.
+- **Precompression** applies to the `--assets` `ServeDir` path; embedded assets
+  serve uncompressed (fine for local, and Stage 5 owns hub-side compression).
+- **WebSocket auto-reconnect** — if `/api/live` drops (server restart), the
+  stream ends quietly and a page reload re-establishes it. Acceptable for a local
+  single-process tool.
+- **Hub multi-ARA mode, Docker, TLS/reverse proxy, immutable-bundle caching** —
+  all Stage 5.
+
+## Tests
+
+`crates/ara-cli/src/serve/` unit + integration tests (driven via
+`ServiceExt::oneshot`, no socket binding): manifest JSON + `ETag`, `304` on
+match, embedded `index.html` fallback, figure path-escape rejection, and
+edit → reparse → broadcast-new-ETag. The ETag content-addressing and the
+embedded-assets cache policy have their own focused tests.

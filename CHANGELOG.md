@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-11
+
+First published release. The `ara` CLI (`validate` + `layout` + `serve` with a
+live-reloading web viewer) and `ara-core` / `ara-wasm` are published to
+crates.io.
+
 ### Added
 - `ara serve <dir>`: axum 0.8 server for a single ARA directory (Stage 4). Serves
   the viewer (**embedded by default** via `include_dir!`, so `cargo install
@@ -64,4 +70,5 @@ All notable changes to this project are documented here. The format follows
   tested at the `0.1.0` publish.
 - Bumped workspace version `0.0.0 → 0.0.1`, then `0.0.1 → 0.0.2` (Stage 1),
   then `0.0.2 → 0.0.3` (issue #3), then `0.0.3 → 0.0.4` (Stage 2), then
-  `0.0.4 → 0.0.5` (Stage 3).
+  `0.0.4 → 0.0.5` (Stage 3), then `0.0.5 → 0.0.6` (Stage 4), then
+  `0.0.6 → 0.1.0` (first published release).
