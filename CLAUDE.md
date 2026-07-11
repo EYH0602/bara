@@ -7,7 +7,7 @@
 - Always test your code after your implementation.
 - Never commit changes or create PRs unless requested by the human developer.
   - Suggest commit messages to the human developer for review after your implementation.
-- Before submitting a PR, bump the patch version in `Cargo.toml` and add an entry to `CHANGELOG.md`.
+- Before submitting a PR **that changes functional code**, bump the patch version in `Cargo.toml` and add an entry to `CHANGELOG.md`. Docs-only, comment-only, or other non-functional changes (e.g. README badges) do not need a version bump or changelog entry.
 - After document our now features in `docs/`.
 - When a bug is reported, first create test cases to reproduce the bug and document the bug in `plans/`.
   Then draft the plan to fix the bug in `plans/`, and implement the fix after the plan is approved by the human developer.
@@ -44,16 +44,17 @@ cargo run -- completions bash
 ## Versioning
 
 The project follows [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
-The version is stored in `pyproject.toml` under `[project] version`.
+The version is stored in `Cargo.toml` under `[workspace.package] version`.
 
-- **Patch version** (`0.2.x` → `0.2.x+1`): bump for every PR. Each PR is squash-merged into the release branch.
+- **Patch version** (`0.2.x` → `0.2.x+1`): bump for every PR that changes functional code. Each such PR is squash-merged into the release branch.
 - **Minor version** (`0.x` → `0.x+1`): bump when cutting a release (e.g. alpha → beta, beta → stable). Release branches are merged with a merge commit.
 - **Major version**: reserved for breaking changes to public interfaces.
 
 ### Rules
 
-- Every PR **must** bump the patch version in `pyproject.toml` before merging.
-- Every PR **must** add an entry to `CHANGELOG.md` under the `## [Unreleased]` section.
+- Every PR **that changes functional code** must bump the patch version in `Cargo.toml` before merging.
+- Every PR **that changes functional code** must add an entry to `CHANGELOG.md` under the `## [Unreleased]` section.
+- Non-functional PRs (docs, comments, formatting, CI/tooling with no behavior change) do **not** require a version bump or changelog entry.
 - When merging a release branch (e.g. `release/beta` → `main`), bump the minor version and move `[Unreleased]` entries under a versioned heading.
 - The current release track is `0.2.x` (beta).
 
