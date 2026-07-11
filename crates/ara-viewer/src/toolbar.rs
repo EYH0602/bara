@@ -81,6 +81,7 @@ pub fn Toolbar(filter: RwSignal<FilterState>, manifest: Option<Manifest>) -> imp
         <input
             type="search"
             class="toolbar-search"
+            aria-label="Search nodes"
             placeholder="Search\u{2026}"
             prop:value=move || filter.get().query.clone()
             on:input=move |ev| {
@@ -92,6 +93,7 @@ pub fn Toolbar(filter: RwSignal<FilterState>, manifest: Option<Manifest>) -> imp
         // ── Kind filter <select> ──────────────────────────────────────────
         <select
             class="toolbar-select"
+            aria-label="Filter by type"
             disabled=!has_manifest
             on:change=move |ev| {
                 let val = event_target_value(&ev);

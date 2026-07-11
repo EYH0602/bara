@@ -655,3 +655,41 @@ pre.diff {
 .recipe ol li {
   margin-bottom: 0.3rem;
 }
+
+/* ── Responsive: narrow viewports (≤ 800 px) ────────────────────────────────
+   Two-pane grid stacks to a single column.  The map panel goes on top and the
+   detail panel below, each independently scrollable.  The header toolbar wraps
+   below the title when horizontal space is tight.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 800px) {
+  /* Header: allow title + toolbar to wrap onto separate lines. */
+  .app-header {
+    flex-wrap: wrap;
+  }
+
+  /* Toolbar: reset the auto margin so it left-aligns when wrapped. */
+  .toolbar-area {
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+
+  /* Main grid: single column, two rows, each taking roughly half the viewport. */
+  .app-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+    overflow: auto;
+  }
+
+  /* Restore right border on the map panel (normally supplied by .panel-detail
+     removing its own border; in stacked layout both panels stand alone). */
+  .panel-map {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* Narrow search input so it doesn't overflow on 375 px screens. */
+  .toolbar-search {
+    width: 8rem;
+  }
+}

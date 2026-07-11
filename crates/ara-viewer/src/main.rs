@@ -59,8 +59,12 @@ fn App() -> impl IntoView {
             <div class="header-title">
                 <h1>"ARA Viewer"</h1>
                 <span class="header-subtitle">"Agent-Native Research Artifact"</span>
+                // INERT: artifact abstract/summary would render here once the
+                // Manifest schema carries an `abstract` field.  Until then this
+                // block is omitted entirely — no placeholder UI.
             </div>
-            <div class="toolbar-area">
+            // role="toolbar" gives AT users a named landmark for the filter controls.
+            <div class="toolbar-area" role="toolbar" aria-label="Filters">
                 // Extract the manifest for the Toolbar kind-options derive.
                 // When not loaded, pass None so the select is disabled.
                 {move || {
@@ -75,10 +79,11 @@ fn App() -> impl IntoView {
             </div>
         </header>
         <main class="app-main">
-            <section id="map" class="panel panel-map">
+            // role="region" + aria-label lets screen-reader users jump between panes.
+            <section id="map" class="panel panel-map" role="region" aria-label="Exploration graph">
                 <MapPane load_state=load_state selected=selected pan_zoom=pan_zoom filter=filter />
             </section>
-            <section id="detail" class="panel panel-detail">
+            <section id="detail" class="panel panel-detail" role="region" aria-label="Detail">
                 <DetailPane load_state=load_state selected=selected />
             </section>
         </main>
