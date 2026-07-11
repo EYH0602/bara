@@ -43,10 +43,14 @@ compute_source_hash() {
       "$VIEWER_DIR/index.html" \
       "$VIEWER_DIR/Trunk.toml" \
       "$VIEWER_DIR/Cargo.toml"
-  } | sort | while read -r f; do
+  } | LC_ALL=C sort | while read -r f; do
     # Emit "<sha256>  <repo-relative-path>" so the digest is location-stable.
     shasum -a 256 "$f" | awk -v p="${f#"$ROOT"/}" '{print $1 "  " p}'
   done | shasum -a 256 | awk '{print $1}'
+  # LC_ALL=C pins the sort to a bytewise order so the file list — and thus the
+  # digest — is identical across locales (macOS en_US vs CI C/POSIX). Without it
+  # mixed-case names (Cargo.toml/Trunk.toml vs lowercase paths) reorder per
+  # locale and the same content produces a different hash on different machines.
 }
 
 case "${1:-}" in
