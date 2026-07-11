@@ -193,7 +193,10 @@ fn dead_end_node_has_dead_end_class() {
         .unwrap()
         .expect("dead_end node g must be present");
 
-    let class = dead_end_g.class_name();
+    // NB: `<g>` is an SVG element, whose `.className` is an `SVGAnimatedString`
+    // object, not a string — `Element::class_name()` would throw. Read the raw
+    // `class` attribute instead.
+    let class = dead_end_g.get_attribute("class").unwrap_or_default();
     assert!(
         class.contains("dead_end"),
         "dead_end node <g> class must contain 'dead_end', got: {class}"
@@ -294,7 +297,7 @@ fn node_g_has_a11y_attributes() {
 /// node's content.  We verify that after a click on N01's <g>, the detail pane
 /// shows "Use sinusoidal encoding" (N01's label).
 #[wasm_bindgen_test]
-fn click_node_updates_detail_pane() {
+async fn click_node_updates_detail_pane() {
     let doc = web_sys::window().unwrap().document().unwrap();
     let graph_container = body_div(&doc);
     let detail_container = body_div(&doc);
@@ -338,8 +341,20 @@ fn click_node_updates_detail_pane() {
         .unwrap()
         .expect("N01 node g must be present");
 
-    let n01_el = n01_g.dyn_ref::<web_sys::HtmlElement>().unwrap();
-    n01_el.click();
+    // `<g>` is an SVG element, not an `HtmlElement`, so `.click()` is
+    // unavailable. Dispatch a synthetic click that *bubbles* — Leptos 0.8
+    // delegates `on:click` to the mount root, so a non-bubbling event would
+    // never reach the handler.
+    let init = web_sys::MouseEventInit::new();
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let click_ev = web_sys::MouseEvent::new_with_mouse_event_init_dict("click", &init).unwrap();
+    n01_g.dispatch_event(&click_ev).unwrap();
+
+    // Leptos 0.8 flushes reactive effects on the async executor's next tick, so
+    // the detail pane's DOM is not updated synchronously with the signal set.
+    // Yield one tick before reading it back.
+    leptos::task::tick().await;
 
     // After click: detail pane must show N01's title
     let detail_text_after = detail_container.inner_text();
@@ -557,7 +572,9 @@ fn search_query_dims_non_matching_nodes() {
         .query_selector("g[aria-label*='Gradient collapse']")
         .unwrap()
         .expect("N02 node g must be present");
-    let n02_class = n02_g.class_name();
+    // `<g>` is SVG: read the raw `class` attribute (its `.className` is an
+    // `SVGAnimatedString` object, not a string).
+    let n02_class = n02_g.get_attribute("class").unwrap_or_default();
     assert!(
         !n02_class.contains("dimmed"),
         "matching node N02 must NOT be dimmed, got class: {n02_class}"
@@ -568,7 +585,7 @@ fn search_query_dims_non_matching_nodes() {
         .query_selector("g[aria-label*='Use sinusoidal encoding']")
         .unwrap()
         .expect("N01 node g must be present");
-    let n01_class = n01_g.class_name();
+    let n01_class = n01_g.get_attribute("class").unwrap_or_default();
     assert!(
         n01_class.contains("dimmed"),
         "non-matching node N01 must be dimmed, got class: {n01_class}"
