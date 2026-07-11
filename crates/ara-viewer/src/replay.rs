@@ -6,6 +6,7 @@
 //! `ReplayBar` component (and its 1300 ms interval) lands with the wiring.
 
 use ara_core::{Manifest, NodeId};
+use leptos::prelude::*;
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────
 
@@ -82,6 +83,143 @@ pub fn rstat_text(order: &[NodeId], current: Option<&NodeId>, shown: usize) -> S
         format!("step {i} / {n}")
     } else {
         format!("{shown} / {n} steps")
+    }
+}
+
+// ── ReplayBar component ───────────────────────────────────────────────────────
+
+/// Replay interval, matching the reference (`1300 ms`).
+#[cfg(target_arch = "wasm32")]
+const REPLAY_INTERVAL_MS: u64 = 1300;
+
+/// The replay controls: `‹` (prev) / `▶ Replay`⇄`⏸ Pause` (play) / `›` (next).
+///
+/// Works in **both** display modes; steps the shared `selected` signal through
+/// `order`. Prev/next call `stop()` first (per the reference). Play toggles a
+/// 1300 ms interval: if nothing is selected it selects `order[0]`, then each
+/// tick advances; at the last node it auto-stops (no wrap, no loop). The timer
+/// is wasm-only; on native the play button is inert. The interval is torn down
+/// on pause, on reaching the last node, and on unmount (`on_cleanup`).
+#[component]
+pub fn ReplayBar(
+    order: Memo<Vec<NodeId>>,
+    selected: RwSignal<Option<NodeId>>,
+) -> impl IntoView {
+    // Whether the play interval is currently running (drives the button label).
+    let playing = RwSignal::new(false);
+    // The live interval handle, so play/stop/cleanup can cancel it. Stored (not
+    // a signal) because it is imperative timer state, not reactive view state.
+    let handle: StoredValue<Option<IntervalHandle>> = StoredValue::new(None);
+
+    // stop(): clear the timer + reset the label. Safe on native (no-op handle).
+    let stop = move || {
+        handle.update_value(|h| {
+            if let Some(h) = h.take() {
+                h.clear();
+            }
+        });
+        playing.set(false);
+    };
+
+    // Advance one step in `dir`, clamping. Shared by prev/next + the tick.
+    let advance = move |dir: Step| {
+        let ord = order.get();
+        let next = step(&ord, selected.get().as_ref(), dir);
+        if let Some(n) = next {
+            selected.set(Some(n));
+        }
+    };
+
+    // Prev / next: stop() first, then a single step (reference order).
+    let on_prev = move |_| {
+        stop();
+        advance(Step::Prev);
+    };
+    let on_next = move |_| {
+        stop();
+        advance(Step::Next);
+    };
+
+    // Play toggle. The interval is wasm-only; on native this just no-ops the
+    // timer (the button still renders but does not animate).
+    let on_play = move |_| {
+        if playing.get() {
+            stop();
+            return;
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let ord = order.get();
+            if ord.is_empty() {
+                return;
+            }
+            // If nothing is selected, start at the first node.
+            if selected.get().is_none() {
+                selected.set(Some(ord[0].clone()));
+            }
+            playing.set(true);
+            let tick = move || {
+                let ord = order.get();
+                let cur = selected.get();
+                let (i, n) = counter(&ord, cur.as_ref());
+                // At (or past) the last node → auto-stop, no wrap.
+                if n == 0 || i >= n {
+                    stop();
+                    return;
+                }
+                if let Some(next) = step(&ord, cur.as_ref(), Step::Next) {
+                    selected.set(Some(next));
+                }
+                // If that step landed on the last node, stop after it.
+                let (i2, n2) = counter(&ord, selected.get().as_ref());
+                if i2 >= n2 {
+                    stop();
+                }
+            };
+            if let Ok(h) = set_interval_with_handle(
+                tick,
+                std::time::Duration::from_millis(REPLAY_INTERVAL_MS),
+            ) {
+                handle.set_value(Some(h));
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            // Native: no timer. Mark playing so the label reflects intent in
+            // native component tests; a subsequent click stops it.
+            playing.set(true);
+        }
+    };
+
+    // Tear the interval down on unmount so it can't outlive the component.
+    on_cleanup(move || {
+        handle.update_value(|h| {
+            if let Some(h) = h.take() {
+                h.clear();
+            }
+        });
+    });
+
+    let play_label = move || {
+        if playing.get() {
+            "\u{23f8} Pause"
+        } else {
+            "\u{25b6} Replay"
+        }
+    };
+
+    view! {
+        <div class="replay-controls" role="group" aria-label="Replay">
+            <button type="button" class="btn" id="rprev" aria-label="Previous step" on:click=on_prev>
+                "\u{2039}"
+            </button>
+            <button type="button" class="btn primary" id="rplay" on:click=on_play>
+                {play_label}
+            </button>
+            <button type="button" class="btn" id="rnext" aria-label="Next step" on:click=on_next>
+                "\u{203a}"
+            </button>
+        </div>
     }
 }
 

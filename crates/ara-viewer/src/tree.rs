@@ -16,6 +16,7 @@
 use std::collections::{HashMap, HashSet};
 
 use ara_core::{LinkKind, Manifest, NodeId};
+use leptos::prelude::*;
 
 use crate::kind::kind_meta;
 
@@ -174,6 +175,153 @@ fn build_row(
         is_dead_end,
         dep_targets,
     }
+}
+
+// ── TreeView component ────────────────────────────────────────────────────────
+// Like the rest of the viewer, this compiles on native too (no browser-only
+// APIs). Renders the model as scoped DOM inside `.tree-map`, reproducing the
+// reference `renderMap` markup 1:1 (only re-scoped under `.tree-map`).
+
+/// Renders a [`TreeModel`] as the published DOM indented tree-list.
+///
+/// Selection drives the shared `selected` signal (so the detail pane updates
+/// unchanged); rows not in `matching` get `.dim`; hovering a row highlights its
+/// `dep_targets` with `.deptarget`. Isolated roots render inside a trailing
+/// `.isobox` — but only when `model.isolated` is non-empty.
+#[component]
+pub fn TreeView(
+    model: TreeModel,
+    selected: RwSignal<Option<NodeId>>,
+    matching: Memo<HashSet<NodeId>>,
+) -> impl IntoView {
+    // Local hover state: the set of dep-target ids highlighted while a row is
+    // hovered. Matches the reference nodeRow mouseenter/mouseleave.
+    let hovered_deps: RwSignal<HashSet<NodeId>> = RwSignal::new(HashSet::new());
+
+    let roots = model.roots;
+    let isolated = model.isolated;
+    let has_isolated = !isolated.is_empty();
+
+    let root_views: Vec<AnyView> = roots
+        .iter()
+        .map(|n| render_subtree(n, selected, matching, hovered_deps))
+        .collect();
+    let iso_views: Vec<AnyView> = isolated
+        .iter()
+        .map(|n| render_subtree(n, selected, matching, hovered_deps))
+        .collect();
+
+    view! {
+        <div class="tree-map">
+            {root_views}
+            {has_isolated
+                .then(|| {
+                    view! {
+                        <div class="isobox">
+                            <div class="isohdr">"isolated subtree"</div>
+                            {iso_views}
+                        </div>
+                    }
+                })}
+        </div>
+    }
+}
+
+/// Recursively render one `TreeNode`: a `.node` row plus, when it has children,
+/// a **sibling** `.kid` container (not nested inside the row) — matching the
+/// reference `renderSubtree`.
+fn render_subtree(
+    node: &TreeNode,
+    selected: RwSignal<Option<NodeId>>,
+    matching: Memo<HashSet<NodeId>>,
+    hovered_deps: RwSignal<HashSet<NodeId>>,
+) -> AnyView {
+    let row = node.row.clone();
+    let id = row.id.clone();
+    let glyph = row.glyph.to_string();
+    let glyph_class = format!("glyph {}", row.css_class);
+    let label = row.label.clone();
+    let id_text = id.to_string();
+    let aria_label = format!("{}, {}", row.label, row.css_class);
+
+    // Reactive row class flags. Base `node` (+ `dead` for dead ends) is static;
+    // `sel` / `dim` / `deptarget` are reactive.
+    let is_dead = row.is_dead_end;
+    let sel_id = id.clone();
+    let is_selected = move || selected.get().as_ref() == Some(&sel_id);
+    let dim_id = id.clone();
+    let is_dimmed = move || !matching.get().contains(&dim_id);
+    let hov_id = id.clone();
+    let is_dep_target = move || hovered_deps.get().contains(&hov_id);
+
+    // Dep marker: one `⇠ {ids}` span per row when dep_targets is non-empty.
+    let dep_ids: Vec<String> = row.dep_targets.iter().map(|d| d.to_string()).collect();
+    let dep_marker = (!dep_ids.is_empty()).then(|| {
+        let joined = dep_ids.join(", ");
+        let title = format!("depends on {joined}");
+        let text = format!("\u{21e0} {joined}");
+        view! {
+            "["
+            <span class="dep" title=title>{text}</span>
+            "]"
+        }
+    });
+
+    // Handlers. Click + Enter/Space select; pointer enter/leave set the hovered
+    // dep set to this row's targets.
+    let click_id = id.clone();
+    let key_id = id.clone();
+    let enter_deps: HashSet<NodeId> = row.dep_targets.iter().cloned().collect();
+    let leave_clear = enter_deps.clone();
+
+    // Children get a sibling `.kid` wrapper.
+    let child_views: Vec<AnyView> = node
+        .children
+        .iter()
+        .map(|c| render_subtree(c, selected, matching, hovered_deps))
+        .collect();
+    let has_children = !child_views.is_empty();
+
+    view! {
+        <div
+            class="node"
+            class:dead=is_dead
+            class:sel=is_selected
+            class:dim=is_dimmed
+            class:deptarget=is_dep_target
+            tabindex="0"
+            role="button"
+            aria-label=aria_label
+            on:click=move |_| selected.set(Some(click_id.clone()))
+            on:keydown=move |ev: leptos::ev::KeyboardEvent| {
+                let key = ev.key();
+                if key == "Enter" || key == " " {
+                    ev.prevent_default();
+                    selected.set(Some(key_id.clone()));
+                }
+            }
+            on:pointerenter=move |_| hovered_deps.set(enter_deps.clone())
+            on:pointerleave=move |_| {
+                hovered_deps.update(|h| {
+                    for d in &leave_clear {
+                        h.remove(d);
+                    }
+                });
+            }
+        >
+            <span class=glyph_class>{glyph}</span>
+            <span>
+                <span class="meta">
+                    <span class="nid">{id_text}</span>
+                    {dep_marker}
+                </span>
+                <div class="ntitle">{label}</div>
+            </span>
+        </div>
+        {has_children
+            .then(|| view! { <div class="kid">{child_views}</div> })}
+    }
+    .into_any()
 }
 
 // ── Tests (native — no browser required) ──────────────────────────────────────
