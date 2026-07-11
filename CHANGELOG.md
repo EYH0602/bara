@@ -7,6 +7,14 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Leptos CSR client (`crates/ara-viewer`): SVG DAG **skinned to the published ARA
+  design** (warm-cream theme, glyph+label node kinds, dead-end highlighting) from
+  Stage-2 positions via a pure scene-model `GraphRenderer`, with pan/zoom,
+  keyboard-accessible nodes, a published-style drill-down pane (per-kind field
+  hierarchy, claims with status, graceful degradation), toolbar
+  search/type/dead-end filters, full loading/empty/error states, and an enforced
+  sub-MB wasm size gate — from a static manifest via a `ManifestSource` seam
+  (#6).
 - Deterministic layered DAG **node** layout in `ara-core` via `dagre-dgl-rs`;
   positions + bounds added to `Manifest`; `ara layout <dir> --json` and
   `ara validate --layout`. Edge routing deferred to the client; geometry wire
@@ -41,4 +49,5 @@ All notable changes to this project are documented here. The format follows
 - Dropped the unverified `rust-version = "1.85"` MSRV declaration until it is
   tested at the `0.1.0` publish.
 - Bumped workspace version `0.0.0 → 0.0.1`, then `0.0.1 → 0.0.2` (Stage 1),
-  then `0.0.2 → 0.0.3` (issue #3), then `0.0.3 → 0.0.4` (Stage 2).
+  then `0.0.2 → 0.0.3` (issue #3), then `0.0.3 → 0.0.4` (Stage 2), then
+  `0.0.4 → 0.0.5` (Stage 3).

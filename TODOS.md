@@ -17,12 +17,14 @@ cold. Remove an item when it lands.
 
 ### T-WASM-CLIPPY — clippy the wasm32 target once cfg-gated code exists
 - **What:** Add `cargo clippy --target wasm32-unknown-unknown` (ara-core,
-  ara-wasm) to CI.
+  ara-viewer) to CI.
 - **Why:** Native clippy skips `#[cfg(target_arch = "wasm32")]` branches, so
   wasm-only code can rot while CI stays green.
-- **Context:** No cfg-gated code exists today (no-op now). Becomes relevant when
-  Stage 3 adds `ara-wasm` bindings.
-- **Depends on:** First `#[cfg(target_arch = "wasm32")]` usage in the codebase.
+- **Context:** **Now actionable.** Stage 3 added `#[cfg(target_arch = "wasm32")]`
+  code in `ara-viewer` (`src/source.rs` `fetch_manifest` + the `tests/web.rs`
+  browser layer), so native clippy no longer covers the full crate. (`ara-wasm`
+  was dropped in Stage 3 — target `ara-viewer`, not `ara-wasm`.)
+- **Depends on:** — (met: cfg-gated code now exists).
 
 ### T-DOCS — create docs/ and wire the plan→docs migration lifecycle
 - **What:** Create a `docs/` directory and follow `CLAUDE.md`'s rule that a
@@ -144,3 +146,68 @@ cold. Remove an item when it lands.
   cross-target golden test cannot be made to pass. Mature JS layout is the
   fallback because it is proven and runs client-side for free.
 - **Depends on:** outcome of the Stage 2 step-1 spike.
+
+## Deferred from Stage 3 design review (2026-07-10)
+
+### T-DESIGN-TOKENS — extract the published ARA token set into docs
+- **What:** Capture the published `research-visualizer` token set (warm-cream
+  palette, glyph+label kind encoding, dead-end-only colour rule, `ui-sans-serif`/
+  `ui-monospace` fonts) into `docs/design-tokens.md` (or `DESIGN.md`).
+- **Why:** Stage 3 vendors these tokens into the client stylesheet; without a
+  documented source of truth, Stage 4/5 (and any future surface) will re-derive
+  colours ad hoc and drift from the published ARA look.
+- **Context:** The reference is `ARA-Labs/ARA-Demo` `*/trajectory.html`
+  (`<style>:root`). Design review chose "hybrid: SVG graph, published skin", so the
+  tokens are now load-bearing across stages.
+- **Depends on:** Stage 3 vendoring the tokens.
+
+### T-GRAPH-KBD-NAV — arrow-key spatial traversal of the SVG graph
+- **What:** Let keyboard users walk node-to-node across the SVG DAG by spatial
+  adjacency (arrow keys), beyond the Tab-order + search/filter keyboard path
+  Stage 3 ships.
+- **Why:** Full keyboard parity for power users navigating a large graph; Tab
+  order alone is tedious on a wide DAG.
+- **Context:** Stage 3 ships focusable nodes (Tab, Enter/Space select) + toolbar
+  search/type/dead-end filters as the primary keyboard nav. Spatial arrow-walking
+  of an arbitrary DAG is non-trivial and was deferred so Stage 3 lands.
+- **Depends on:** Stage 3 SVG graph.
+
+### T-VIEWER-TREE-LIST — published DOM tree-list as an alternate display mode
+- **What:** Add the published `research-visualizer` DOM tree-list as a second
+  viewer display mode (a `Graph ⇄ Tree` toggle), plus the missing published
+  interactions: the Replay stepper (prev/next/play + `←/→` + step counter) and
+  the layer-panel overlay (Context/Glossary/Dependencies/Recipes) + header
+  Abstract `<details>` (inert until the schema carries them).
+- **Why:** `ARA-Labs/ARA-Demo`'s viewer (`nanogpt_ara/trajectory.html`) renders a
+  DOM indented tree-list — rows with `⇠ id` dep markers + hover-highlight, not
+  SVG edges — and ships replay + layer panels. Stage 3 shipped the reviewed
+  SVG-DAG hybrid instead; this restores display/interaction parity as an option
+  without dropping the graph.
+- **Context:** Keep the SVG graph as the default/Graph mode; reuse `kind_meta`,
+  the detail pane, `filter::node_matches`, and the `selected`/`filter`/`pan_zoom`
+  signals unchanged. Layer panels + abstract stay inert until T-REAL-CORPUS
+  widens the schema. Tracked in GitHub issue #7.
+- **Depends on:** Stage 3 viewer (PR #6); layer panels depend on T-REAL-CORPUS.
+
+## Deferred from Stage 3 eng review (2026-07-10)
+
+### T-VIEWER-DIST-PACKAGING — how the ara-viewer frontend reaches users
+- **What:** Decide and implement how the Trunk `dist/` (wasm + assets) from
+  `crates/ara-viewer` is distributed. `cargo install ara-cli` cannot serve a
+  generated/gitignored frontend.
+- **Why:** Stage 4 (`ara serve`) serves the `dist/`, and the `0.1.0` release
+  publishes `ara-core → ara-wasm → ara-cli` but not `ara-viewer`'s assets. Without
+  a plan, the released CLI has no frontend to serve.
+- **Context:** Options — embed `dist/` into the `ara-cli` binary at build time
+  (e.g. `rust-embed`), copy it during the release, or publish `ara-viewer` assets
+  separately. Surfaced by the Stage 3 eng-review outside voice (Codex).
+- **Depends on:** Stage 4 (`ara serve`) / the `0.1.0` release cut.
+
+### T-STAGE4-VERSION-BUMP — reconcile Stage 3/4 version collision
+- **What:** Update the Stage 4 plan: if Stage 3 takes `0.0.5`, Stage 4 is
+  `0.0.5 → 0.0.6` (both plans currently say `0.0.4 → 0.0.5`).
+- **Why:** Two PRs can't both bump to `0.0.5`; the per-stage patch-bump chain in
+  `stage-overview.md` breaks otherwise.
+- **Context:** One-line edit to `plans/stage-4-serve-live-reload.md` when Stage 3
+  merges. Surfaced by the Stage 3 eng-review outside voice.
+- **Depends on:** Stage 3 merge.

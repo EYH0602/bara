@@ -1,12 +1,9 @@
-//! `ara-viewer`: memorable front-door for the ARA viewer runtime.
+//! ARA Viewer — binary entry point.
 //!
-//! Reserved umbrella name. The command-line tool ships as the `ara` binary from
-//! the `ara-cli` crate; install it with `cargo install ara-cli`. This is a
-//! skeleton reservation release. See <https://github.com/EYH0602/bara>.
+//! Thin wrapper that delegates to [`ara_viewer::mount`].  All application
+//! logic lives in the library target (`src/lib.rs` and its sub-modules) so
+//! the `wasm-bindgen-test` browser-test layer can import components directly.
 
 fn main() {
-    println!(
-        "ara-viewer {} — install the CLI with `cargo install ara-cli`, then run `ara`.",
-        env!("CARGO_PKG_VERSION")
-    );
+    ara_viewer::mount();
 }
