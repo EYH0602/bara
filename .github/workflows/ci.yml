@@ -54,3 +54,22 @@ jobs:
       # Guards the full native + wasm dual-build path (the shared core AND the
       # browser-facing cdylib), not just ara-core.
       - run: cargo build -p ara-core -p ara-wasm --target wasm32-unknown-unknown --locked
+
+  viewer-web-test:
+    name: viewer-web-test
+    runs-on: ubuntu-24.04
+    # Separate job from `wasm` because it requires Chrome + wasm-pack to run
+    # the wasm-bindgen-test headless-browser layer.  `wasm` only does a
+    # compile-only build check; this job actually executes the browser tests.
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      # Ubuntu 24.04 GitHub runners ship with Chrome; no additional install step
+      # is needed.  wasm-pack downloads the matching chromedriver automatically.
+      # Install wasm-pack from crates.io (the same trust root as every other
+      # dependency) rather than piping a remote installer to a shell; rust-cache
+      # keeps the compiled binary warm across runs.
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+      - name: Run browser tests (headless Chrome)
+        run: wasm-pack test --headless --chrome crates/ara-viewer --locked
