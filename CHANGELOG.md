@@ -13,6 +13,17 @@ All notable changes to this project are documented here. The format follows
   detail right; the previous side-by-side behaviour). Session-only; narrow
   viewports always stack. (#9)
 
+### Fixed
+- Viewer: detail-pane placeholder now reads "Select a step to see its details."
+  instead of "…on the left." — the map sits on top in the default stack mode, so
+  the directional copy was wrong. (#9)
+- Viewer: inactive layout-toggle label now uses `--ink` (~11.6:1) instead of
+  `--muted` (~3.57:1), clearing the WCAG AA 4.5:1 contrast threshold for an
+  interactive control label. (#9)
+- Viewer: the active layout-toggle segment no longer bolds its label, which was
+  changing the label width and nudging the segments sideways on every toggle.
+  (#9)
+
 ## [0.1.0] - 2026-07-11
 
 First published release. The `ara` CLI (`validate` + `layout` + `serve` with a
