@@ -4,10 +4,6 @@
 //! the CSS class (equals the serde snake_case wire tag for canonical kinds),
 //! a single-character chip glyph, and a human-readable badge string.
 
-// `kind_meta` and `KindMeta` are public API consumed by later rendering steps
-// (wasm target) and by tests. The native binary does not call them yet.
-#![allow(dead_code)]
-
 use ara_core::NodeKind;
 
 /// Display metadata for a single [`NodeKind`] variant.

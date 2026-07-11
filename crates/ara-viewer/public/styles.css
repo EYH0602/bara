@@ -176,6 +176,38 @@ code, kbd, samp, pre,
   display: block;
 }
 
+/* ── Graph edges ────────────────────────────────────────────────────────────── */
+/* Edges are rendered before nodes (z-order: edges under nodes).                */
+
+.edge {
+  fill: none;
+  stroke-width: 1.5;
+}
+
+/* Child edges: solid line in the neutral border colour. */
+.edge-child {
+  stroke: var(--line);
+}
+
+/* DependsOn edges: dashed line in the muted colour to distinguish cross-refs. */
+.edge-depends {
+  stroke: var(--muted);
+  stroke-dasharray: 5 3;
+}
+
+/* ── Graph nodes ────────────────────────────────────────────────────────────── */
+/* Each node is a <g class="node <kind>"> group.                                */
+
+.node rect {
+  /* Node background and border are set inline from CSS variables. */
+}
+
+/* Clip label text to node box width (inline clip-path handles truncation). */
+.node text {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 /* ── Kind chip glyphs ───────────────────────────────────────────────────────── */
 /* Kind is read from the glyph + badge, NEVER from colour: every kind uses the  */
 /* neutral --glyph-bg. Only dead_end is coloured (--warn, white ink), which     */

@@ -3,11 +3,14 @@
 //! Mounts the [`App`] component to `<body>`. All application logic lives in
 //! sub-components; this file is intentionally minimal.
 
+mod canvas;
 mod kind;
+mod scene;
 mod source;
 mod state;
 
 use leptos::prelude::*;
+use scene::{GraphRenderer, LayoutView, SvgRenderer, render_scene};
 use source::{ManifestSource, fetch_manifest};
 use state::{LoadState, MapSurface, ViewState, map_surface, safe_viewbox};
 
@@ -77,7 +80,6 @@ fn MapPane(load_state: ReadSignal<LoadState>) -> impl IntoView {
             .into_any(),
 
             MapSurface::Empty => {
-                // When nodes is empty, bounds is None; safe_viewbox guards divide-by-zero.
                 let _vb = safe_viewbox(None);
                 view! {
                     <p class="placeholder-text">"No nodes in this artifact."</p>
@@ -86,27 +88,30 @@ fn MapPane(load_state: ReadSignal<LoadState>) -> impl IntoView {
             }
 
             MapSurface::Graph => {
-                // Manifest is loaded with nodes.  Full SVG graph is Step 3.
-                // For now show a placeholder that confirms node count.
-                let count = match load_state.get() {
-                    LoadState::Loaded(m) => m.nodes.len(),
-                    _ => 0,
+                let manifest = match load_state.get() {
+                    LoadState::Loaded(m) => m,
+                    _ => return view! { <p class="placeholder-text">"Loading…"</p> }.into_any(),
                 };
-                let vb = match load_state.get() {
-                    LoadState::Loaded(m) => safe_viewbox(m.bounds.as_ref()),
-                    _ => safe_viewbox(None),
-                };
+
+                let view_params = LayoutView::default();
+                let renderer = SvgRenderer;
+                let scene = renderer.scene(&manifest, &view_params);
+                let (bx, by, bw, bh) = (
+                    scene.bounds.x,
+                    scene.bounds.y,
+                    scene.bounds.width,
+                    scene.bounds.height,
+                );
+                let viewbox_str = format!("{bx} {by} {bw} {bh}");
+                let scene_content = render_scene(&scene);
+
                 view! {
-                    <p class="placeholder-text">
-                        {format!("{count} nodes loaded (graph renders in Step\u{a0}3)")}
-                    </p>
-                    // SVG scaffold — safe viewBox, no divide-by-zero.
                     <svg
                         class="graph-svg"
-                        viewBox={format!("{} {} {} {}", vb.0, vb.1, vb.2, vb.3)}
+                        viewBox=viewbox_str
                         xmlns="http://www.w3.org/2000/svg"
                     >
-                        // Graph scene built in Step 3.
+                        {scene_content}
                     </svg>
                 }
                 .into_any()
