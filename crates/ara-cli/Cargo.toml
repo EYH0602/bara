@@ -27,7 +27,6 @@ tower-http = { version = "0.6", features = ["fs", "compression-br", "compression
 notify-debouncer-full = "0.5"
 arc-swap = "1"
 bytes = "1"
-futures-util = { version = "0.3", default-features = false }
 # Embedded viewer assets (default; `--assets <dir>` overrides at runtime).
 include_dir = "0.7"
 mime_guess = "2"

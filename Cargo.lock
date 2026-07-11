@@ -133,7 +133,6 @@ dependencies = [
  "axum",
  "bytes",
  "clap",
- "futures-util",
  "http-body-util",
  "include_dir",
  "mime_guess",
