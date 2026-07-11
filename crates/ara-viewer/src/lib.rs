@@ -156,6 +156,10 @@ pub fn MapPane(
 
                 view! {
                     <GraphView scene=scene selected=selected pan_zoom=pan_zoom matching=matching />
+                    // Unobtrusive affordance so the pannable/zoomable canvas is
+                    // discoverable. aria-hidden: it's mouse-centric guidance;
+                    // keyboard users navigate via the toolbar + Tab.
+                    <p class="map-hint" aria-hidden="true">"Scroll to zoom · drag to pan"</p>
                 }
                 .into_any()
             }

@@ -160,6 +160,26 @@ code, kbd, samp, pre,
   border-right: none;
 }
 
+/* Anchor the map-hint affordance to the map pane's bottom-left corner. */
+.panel-map {
+  position: relative;
+}
+
+/* Subtle, non-interactive hint that the canvas pans/zooms. */
+.map-hint {
+  position: absolute;
+  bottom: 0.6rem;
+  left: 0.85rem;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  opacity: 0.6;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* ── Placeholder text ───────────────────────────────────────────────────────── */
 
 .placeholder-text {
