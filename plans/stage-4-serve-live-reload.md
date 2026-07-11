@@ -1,7 +1,7 @@
 # Stage 4 — `ara serve` Local Mode + Live Reload
 
 **PR target:** `stage4-serve-live-reload` → `main`. **Depends on:** Stage 3.
-**Version bump:** `0.0.4 → 0.0.5`.
+**Version bump:** `0.0.5 → 0.0.6`. (Stage 3 took `0.0.5`.)
 
 ## Problem background
 
@@ -70,7 +70,7 @@ place without losing selection/zoom.
 Stages 1–4 together are the first usable product, so a dedicated **release PR
 follows this stage** (separate from the Stage 4 feature PR):
 
-1. Bump the workspace version `0.0.5 → 0.1.0`; move `CHANGELOG.md`
+1. Bump the workspace version `0.0.6 → 0.1.0`; move `CHANGELOG.md`
    `[Unreleased]` entries under a `## [0.1.0]` heading.
 2. Wire `version =` on the intra-workspace path deps (`ara-core`, `ara-wasm`).
 3. Publish to crates.io **in dependency order**: `ara-core` → `ara-wasm` →

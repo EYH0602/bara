@@ -17,12 +17,14 @@ cold. Remove an item when it lands.
 
 ### T-WASM-CLIPPY — clippy the wasm32 target once cfg-gated code exists
 - **What:** Add `cargo clippy --target wasm32-unknown-unknown` (ara-core,
-  ara-wasm) to CI.
+  ara-viewer) to CI.
 - **Why:** Native clippy skips `#[cfg(target_arch = "wasm32")]` branches, so
   wasm-only code can rot while CI stays green.
-- **Context:** No cfg-gated code exists today (no-op now). Becomes relevant when
-  Stage 3 adds `ara-wasm` bindings.
-- **Depends on:** First `#[cfg(target_arch = "wasm32")]` usage in the codebase.
+- **Context:** **Now actionable.** Stage 3 added `#[cfg(target_arch = "wasm32")]`
+  code in `ara-viewer` (`src/source.rs` `fetch_manifest` + the `tests/web.rs`
+  browser layer), so native clippy no longer covers the full crate. (`ara-wasm`
+  was dropped in Stage 3 — target `ara-viewer`, not `ara-wasm`.)
+- **Depends on:** — (met: cfg-gated code now exists).
 
 ### T-DOCS — create docs/ and wire the plan→docs migration lifecycle
 - **What:** Create a `docs/` directory and follow `CLAUDE.md`'s rule that a

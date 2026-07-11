@@ -104,7 +104,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "ara-cli"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "ara-core",
  "assert_cmd",
@@ -116,7 +116,7 @@ dependencies = [
 
 [[package]]
 name = "ara-core"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "dagre-dgl-rs",
  "insta",
@@ -127,7 +127,7 @@ dependencies = [
 
 [[package]]
 name = "ara-viewer"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "ara-core",
  "console_error_panic_hook",
@@ -142,7 +142,7 @@ dependencies = [
 
 [[package]]
 name = "ara-wasm"
-version = "0.0.4"
+version = "0.0.5"
 
 [[package]]
 name = "arraydeque"
