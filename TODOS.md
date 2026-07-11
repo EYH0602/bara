@@ -172,6 +172,23 @@ cold. Remove an item when it lands.
   of an arbitrary DAG is non-trivial and was deferred so Stage 3 lands.
 - **Depends on:** Stage 3 SVG graph.
 
+### T-VIEWER-TREE-LIST — published DOM tree-list as an alternate display mode
+- **What:** Add the published `research-visualizer` DOM tree-list as a second
+  viewer display mode (a `Graph ⇄ Tree` toggle), plus the missing published
+  interactions: the Replay stepper (prev/next/play + `←/→` + step counter) and
+  the layer-panel overlay (Context/Glossary/Dependencies/Recipes) + header
+  Abstract `<details>` (inert until the schema carries them).
+- **Why:** `ARA-Labs/ARA-Demo`'s viewer (`nanogpt_ara/trajectory.html`) renders a
+  DOM indented tree-list — rows with `⇠ id` dep markers + hover-highlight, not
+  SVG edges — and ships replay + layer panels. Stage 3 shipped the reviewed
+  SVG-DAG hybrid instead; this restores display/interaction parity as an option
+  without dropping the graph.
+- **Context:** Keep the SVG graph as the default/Graph mode; reuse `kind_meta`,
+  the detail pane, `filter::node_matches`, and the `selected`/`filter`/`pan_zoom`
+  signals unchanged. Layer panels + abstract stay inert until T-REAL-CORPUS
+  widens the schema. Tracked in GitHub issue #7.
+- **Depends on:** Stage 3 viewer (PR #6); layer panels depend on T-REAL-CORPUS.
+
 ## Deferred from Stage 3 eng review (2026-07-10)
 
 ### T-VIEWER-DIST-PACKAGING — how the ara-viewer frontend reaches users
