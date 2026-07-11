@@ -1,0 +1,144 @@
+/* ── ARA Viewer — warm-cream design system tokens + skin ──────────────────── */
+
+/* Published token set (vendored verbatim) */
+:root {
+  --bg:        #faf6ef;
+  --panel:     #fffdf8;
+  --panel2:    #f4ecdf;
+  --line:      #e6ddcc;
+  --ink:       #2f2a23;
+  --muted:     #90856f;
+  --accent:    #bf6a2e;
+  --chip:      #f1e9da;
+  --ok:        #5d7c3f;
+  --warn:      #a23b2d;
+  --glyph-bg:  #e7ddca;
+  --glyph-ink: #5a5142;
+  --sel-bg:    #f7ead2;
+
+  /* Typography */
+  --font-body: ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, monospace;
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────────── */
+
+body {
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* IDs and code use monospace */
+code, kbd, samp, pre,
+.node-id, .wire-tag {
+  font-family: var(--font-mono);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+
+.app-header {
+  background-color: var(--panel2);
+  border-bottom: 1px solid var(--line);
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+.header-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.app-header h1 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: 0.01em;
+}
+
+.header-subtitle {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.toolbar-area {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ── Main two-pane grid ─────────────────────────────────────────────────────── */
+
+.app-main {
+  display: grid;
+  grid-template-columns: minmax(320px, 38%) 1fr;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Shared panel surface ───────────────────────────────────────────────────── */
+
+.panel {
+  background-color: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow: auto;
+  padding: 1rem;
+}
+
+.panel-detail {
+  border-right: none;
+}
+
+/* ── Placeholder text ───────────────────────────────────────────────────────── */
+
+.placeholder-text {
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+  padding-top: 2rem;
+}
+
+/* ── Kind chip glyphs ───────────────────────────────────────────────────────── */
+/* Kind is read from the glyph + badge, NEVER from colour: every kind uses the  */
+/* neutral --glyph-bg. Only dead_end is coloured (--warn, white ink), which     */
+/* keeps the encoding colourblind-safe. No per-kind palette — see the plan's    */
+/* "only dead_end is coloured / no new palette" rule.                           */
+
+.kind-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 4px;
+  background-color: var(--glyph-bg);
+  color: var(--glyph-ink);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* The single coloured exception: dead ends. */
+.dead_end .kind-chip {
+  background-color: var(--warn);
+  color: #fff;
+}
