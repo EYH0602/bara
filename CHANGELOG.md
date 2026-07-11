@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Viewer: selectable layout modes for the map/detail panes via a segmented
+  toggle in the header — **Stack** (map on top at full width, detail below; the
+  new default, matching the wide exploration-DAG shape) and **Split** (map left,
+  detail right; the previous side-by-side behaviour). Session-only; narrow
+  viewports always stack. (#9)
+
 ## [0.1.0] - 2026-07-11
 
 First published release. The `ara` CLI (`validate` + `layout` + `serve` with a
