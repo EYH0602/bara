@@ -46,11 +46,14 @@ const FIXTURE_JSON: &str = r#"{
       "kind": "decision",
       "label": "Use sinusoidal encoding",
       "description": "Decision about positional encoding strategy.",
+      "source_refs": [],
+      "evidence_notes": [],
       "fields": {
-        "kind": "decision",
-        "choice": "sinusoidal",
-        "rationale": "Better on long sequences.",
-        "alternatives": ["learned", "relative"]
+        "decision": {
+          "choice": "sinusoidal",
+          "alternatives": ["learned", "relative"],
+          "rationale": "Better on long sequences."
+        }
       },
       "pos": { "x": 100.0, "y": 100.0 }
     },
@@ -59,16 +62,21 @@ const FIXTURE_JSON: &str = r#"{
       "kind": "dead_end",
       "label": "Gradient collapse",
       "description": "This path failed.",
+      "source_refs": [],
+      "evidence_notes": [],
       "fields": {
-        "kind": "dead_end",
-        "why_failed": "Gradients vanished at depth 12."
+        "dead_end": {
+          "why_failed": "Gradients vanished at depth 12."
+        }
       },
       "pos": { "x": 300.0, "y": 100.0 }
     },
     {
       "id": "N03",
       "kind": "question",
-      "fields": { "kind": "question" },
+      "source_refs": [],
+      "evidence_notes": [],
+      "fields": "question",
       "pos": { "x": 100.0, "y": 300.0 }
     },
     {
@@ -76,7 +84,9 @@ const FIXTURE_JSON: &str = r#"{
       "kind": "insight",
       "label": "Attention is all you need",
       "description": "Core insight of the transformer.",
-      "fields": { "kind": "insight" },
+      "source_refs": [],
+      "evidence_notes": [],
+      "fields": "insight",
       "pos": { "x": 300.0, "y": 300.0 }
     }
   ],
@@ -92,7 +102,9 @@ const FIXTURE_JSON: &str = r#"{
       "id": "C01",
       "title": "Transformer convergence",
       "statement": "The model converges in 50 epochs.",
-      "status": "supported"
+      "status": "supported",
+      "proof": [],
+      "deps": []
     }
   ],
   "bounds": { "x": 0.0, "y": 0.0, "width": 500.0, "height": 500.0 }

@@ -61,11 +61,14 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
-      # binaryen (wasm-opt) and brotli are both in the ubuntu-24.04 apt package list.
-      # trunk is installed from crates.io (same trust root as other dependencies);
-      # rust-cache keeps the compiled binary warm across runs.
+      # brotli is used for the compressed-size measurement. We do NOT install
+      # binaryen (wasm-opt) from apt: ubuntu-24.04's binaryen is too old for the
+      # `--enable-bulk-memory-opt` flag that current Trunk passes to wasm-opt, so
+      # we let Trunk download a matching wasm-opt itself (same as it does for
+      # wasm-bindgen). trunk is installed from crates.io (same trust root as
+      # other dependencies); rust-cache keeps the compiled binary warm across runs.
       - name: Install system tools
-        run: sudo apt-get install -y binaryen brotli
+        run: sudo apt-get install -y brotli
       - name: Install trunk
         run: cargo install trunk --locked
       # Use the wasm-release profile (opt-level="z", lto="fat", codegen-units=1,
