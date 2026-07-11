@@ -13,6 +13,12 @@ All notable changes to this project are documented here. The format follows
   detail right; the previous side-by-side behaviour). Session-only; narrow
   viewports always stack. (#9)
 
+### Changed
+- Build: `scripts/embed-viewer.sh` is now the canonical way to regenerate the
+  viewer bundle baked into `ara-cli`, and a new CI job (`viewer-embed-fresh`)
+  runs `--check` to fail a PR when the ara-viewer frontend source changes without
+  a matching regen — so `ara serve` can't silently ship a stale embedded UI. (#9)
+
 ### Fixed
 - Viewer: detail-pane placeholder now reads "Select a step to see its details."
   instead of "…on the left." — the map sits on top in the default stack mode, so
