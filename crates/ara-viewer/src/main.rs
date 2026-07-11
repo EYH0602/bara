@@ -4,12 +4,14 @@
 //! sub-components; this file is intentionally minimal.
 
 mod canvas;
+mod detail;
 mod kind;
 mod scene;
 mod source;
 mod state;
 
 use ara_core::NodeId;
+use detail::DetailPane;
 use leptos::prelude::*;
 use scene::{GraphRenderer, GraphView, LayoutView, SvgRenderer};
 use source::{ManifestSource, fetch_manifest};
@@ -58,16 +60,7 @@ fn App() -> impl IntoView {
                 <MapPane load_state=load_state selected=selected pan_zoom=pan_zoom />
             </section>
             <section id="detail" class="panel panel-detail">
-                // Step 4 will build the real detail pane.
-                // For now, show the selected node id or a placeholder.
-                {move || match selected.get() {
-                    None => view! {
-                        <p class="placeholder-text">"Select a step on the left."</p>
-                    }.into_any(),
-                    Some(id) => view! {
-                        <p class="placeholder-text">"Selected: " {id.as_str().to_string()}</p>
-                    }.into_any(),
-                }}
+                <DetailPane load_state=load_state selected=selected />
             </section>
         </main>
     }
