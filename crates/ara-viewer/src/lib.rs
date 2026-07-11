@@ -12,6 +12,7 @@ pub mod scene;
 pub mod source;
 pub mod state;
 pub mod toolbar;
+pub mod tree;
 
 use std::collections::HashSet;
 
