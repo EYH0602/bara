@@ -31,7 +31,7 @@ Stages 3–5 consume it and must not change it without a coordinated bump.
   together are the first usable product (`ara validate` + `ara layout` +
   `ara serve` with a live viewer). Stages 1–3 alone are not shippable as a CLI
   release (no `ara serve` yet). The `0.1.0` cut is a dedicated release PR
-  (`0.0.5 → 0.1.0`) that publishes `ara-core`, `ara-cli`, and `ara-wasm` to
+  (`0.0.6 → 0.1.0`) that publishes `ara-core`, `ara-cli`, and `ara-wasm` to
   crates.io **in dependency order** (wire the `version =` fields on path deps
   first). Stage 5 (hub/Docker) is ops, not new public API, and ships as `0.1.1`.
 - **Tests are mandatory** (per `CLAUDE.md`): every stage lands with unit +
