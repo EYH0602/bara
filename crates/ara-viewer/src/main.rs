@@ -5,17 +5,23 @@
 
 mod canvas;
 mod detail;
+mod filter;
 mod kind;
 mod scene;
 mod source;
 mod state;
+mod toolbar;
+
+use std::collections::HashSet;
 
 use ara_core::NodeId;
 use detail::DetailPane;
+use filter::FilterState;
 use leptos::prelude::*;
 use scene::{GraphRenderer, GraphView, LayoutView, SvgRenderer};
 use source::{ManifestSource, fetch_manifest};
 use state::{LoadState, MapSurface, PanZoom, map_surface, safe_viewbox};
+use toolbar::Toolbar;
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -37,13 +43,16 @@ fn App() -> impl IntoView {
     let source = ManifestSource::default();
     fetch_manifest(source, move |s| set_load_state.set(s));
 
-    // ── Selection state (shared with future detail pane, Step 4) ─────────────
+    // ── Selection state (shared with detail pane) ────────────────────────────
     // Owned here so it survives manifest swaps and can be read by the detail
     // pane without requiring prop-drilling through MapPane.
     let selected: RwSignal<Option<NodeId>> = RwSignal::new(None);
 
     // ── Pan/zoom state (persists across manifest swaps) ───────────────────────
     let pan_zoom: RwSignal<PanZoom> = RwSignal::new(PanZoom::default());
+
+    // ── Filter state (Step 5: toolbar + dimming; survives manifest swaps) ─────
+    let filter: RwSignal<FilterState> = RwSignal::new(FilterState::default());
 
     view! {
         <header class="app-header">
@@ -52,12 +61,22 @@ fn App() -> impl IntoView {
                 <span class="header-subtitle">"Agent-Native Research Artifact"</span>
             </div>
             <div class="toolbar-area">
-                // Toolbar placeholder — populated in a later step.
+                // Extract the manifest for the Toolbar kind-options derive.
+                // When not loaded, pass None so the select is disabled.
+                {move || {
+                    let manifest = match load_state.get() {
+                        LoadState::Loaded(m) => Some(m),
+                        _ => None,
+                    };
+                    view! {
+                        <Toolbar filter=filter manifest=manifest />
+                    }
+                }}
             </div>
         </header>
         <main class="app-main">
             <section id="map" class="panel panel-map">
-                <MapPane load_state=load_state selected=selected pan_zoom=pan_zoom />
+                <MapPane load_state=load_state selected=selected pan_zoom=pan_zoom filter=filter />
             </section>
             <section id="detail" class="panel panel-detail">
                 <DetailPane load_state=load_state selected=selected />
@@ -72,6 +91,7 @@ fn MapPane(
     load_state: ReadSignal<LoadState>,
     selected: RwSignal<Option<NodeId>>,
     pan_zoom: RwSignal<PanZoom>,
+    filter: RwSignal<FilterState>,
 ) -> impl IntoView {
     move || {
         let state = load_state.get();
@@ -109,8 +129,23 @@ fn MapPane(
                 let renderer = SvgRenderer;
                 let scene = renderer.scene(&manifest, &view_params);
 
+                // Reactive matching set: ids of nodes passing the current filter.
+                // Stored as a Memo so it only recomputes when filter or manifest changes.
+                let matching: Memo<HashSet<NodeId>> = {
+                    let manifest_for_filter = manifest.clone();
+                    Memo::new(move |_| {
+                        let f = filter.get();
+                        manifest_for_filter
+                            .nodes
+                            .iter()
+                            .filter(|n| filter::node_matches(n, &manifest_for_filter, &f))
+                            .map(|n| n.id.clone())
+                            .collect::<HashSet<NodeId>>()
+                    })
+                };
+
                 view! {
-                    <GraphView scene=scene selected=selected pan_zoom=pan_zoom />
+                    <GraphView scene=scene selected=selected pan_zoom=pan_zoom matching=matching />
                 }
                 .into_any()
             }

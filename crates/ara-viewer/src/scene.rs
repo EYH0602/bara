@@ -9,7 +9,7 @@
 //! Pan/zoom is applied at the SVG `viewBox` level, not here; scene geometry is
 //! view-independent.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ara_core::{LinkKind, Manifest, NodeId, NodeKind, Rect};
 use leptos::prelude::*;
@@ -210,13 +210,16 @@ impl NodeDisplay {
 /// This is the Step-3b interaction layer.  It replaces the static
 /// `render_scene` function.  The pure `scene()` compute is unchanged.
 ///
-/// Selection state is kept in `selected` (shared with the future detail pane).
+/// Selection state is kept in `selected` (shared with the detail pane).
 /// Pan/zoom state is kept in `pan_zoom` (survives manifest swaps in Stage 4).
+/// `matching` is the reactive set of node ids that pass the toolbar filter;
+/// nodes NOT in the set are rendered with the `dimmed` CSS class.
 #[component]
 pub fn GraphView(
     scene: GraphScene,
     selected: RwSignal<Option<NodeId>>,
     pan_zoom: RwSignal<PanZoom>,
+    matching: Memo<HashSet<NodeId>>,
 ) -> impl IntoView {
     // Unpack scene into owned, Clone-able parts suitable for closures.
     let bounds = scene.bounds;
@@ -343,14 +346,19 @@ pub fn GraphView(
                         let node_id_click = node_id.clone();
                         let node_id_key = node_id.clone();
 
-                        // Reactive class: add "selected" when this node is selected.
+                        // Reactive class: add "selected" when this node is selected,
+                        // and "dimmed" when it does not pass the current filter.
                         let group_class_base = nd.group_class.clone();
+                        let node_id_dim = node_id.clone();
                         let group_class = move || {
+                            let mut cls = group_class_base.clone();
                             if selected.get().as_ref() == Some(&node_id) {
-                                format!("{group_class_base} selected")
-                            } else {
-                                group_class_base.clone()
+                                cls.push_str(" selected");
                             }
+                            if !matching.get().contains(&node_id_dim) {
+                                cls.push_str(" dimmed");
+                            }
+                            cls
                         };
 
                         let rx = nd.rx;

@@ -85,6 +85,58 @@ code, kbd, samp, pre,
   gap: 0.5rem;
 }
 
+/* ── Toolbar controls ───────────────────────────────────────────────────────── */
+/* Search input, kind select, and dead-ends-only checkbox.                       */
+/* All controls share the warm-cream skin: --panel bg, --line border, --ink text */
+
+.toolbar-search,
+.toolbar-select {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  color: var(--ink);
+  background-color: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.2rem 0.45rem;
+  outline: none;
+  height: 1.75rem;
+  transition: border-color 0.12s;
+}
+
+.toolbar-search {
+  width: 12rem;
+}
+
+.toolbar-search:focus,
+.toolbar-select:focus {
+  border-color: var(--accent);
+}
+
+.toolbar-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toolbar-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.toolbar-checkbox {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.toolbar-checkbox-text {
+  font-family: var(--font-body);
+}
+
 /* ── Main two-pane grid ─────────────────────────────────────────────────────── */
 
 .app-main {
@@ -228,6 +280,13 @@ code, kbd, samp, pre,
 /* Cursor affordance — nodes are interactive. */
 .node {
   cursor: pointer;
+}
+
+/* Dimmed state: node does not match the active toolbar filter.
+   Layout is stable — only visual opacity is reduced.
+   Selection still works on dimmed nodes; the detail pane shows them. */
+.node.dimmed {
+  opacity: 0.22;
 }
 
 /* ── Node label (foreignObject div) ─────────────────────────────────────────── */
