@@ -121,14 +121,23 @@ default, token round-trip, unknown-token fallback.
 A `display: RwSignal<DisplayMode>` signal is owned by `App` alongside `layout`
 (session-only; survives manifest swaps).
 
-### 2. `DisplayToggle` control (`toolbar.rs`)
+### 2. `DisplayToggle` control (`toolbar.rs`) — via a generic `SegToggle`
 
-A second segmented two-button group (`graph | tree`), structurally identical to
-`LayoutToggle`, rendered in the header `.toolbar-area` before `LayoutToggle`.
-Reuses the existing `.layout-toggle*` CSS classes (rename the CSS comment to
-"segmented control", the class names already read generically) so no new toggle
-skin is needed — or a shared `.seg-toggle` class if cleaner. Active segment gets
-`is-active` + `aria-pressed="true"`; `data-mode` carries the token for tests.
+**Eng review (DRY):** `DisplayToggle` and `LayoutToggle` are the same segmented
+two-button control over a `Copy` enum (same loop, same `is-active`/`aria-pressed`/
+`data-mode` a11y attrs, same click handler). Rather than copy `LayoutToggle`
+(`toolbar.rs:73-100`) verbatim, extract a **generic `SegToggle`** component
+parameterised over a small trait — `segments() -> &[(Token, Label)]`, a class
+prefix, and a get/set on the backing `RwSignal`. `LayoutToggle` and
+`DisplayToggle` become thin wrappers/callers of `SegToggle`; one implementation
+of the loop + a11y + handler, one place to fix any toggle bug. The refactor of
+the *shipped* `LayoutToggle` is covered by its existing browser test
+(`web.rs:548 layout_toggle_flips_active_segment`) as a regression guard.
+
+`DisplayToggle` (`graph | tree`) renders in the header `.toolbar-area` before
+`LayoutToggle`. Reuses the existing `.layout-toggle*` CSS (the class names
+already read generically). Active segment gets `is-active` + `aria-pressed="true"`;
+`data-mode` carries the token for tests.
 
 ### 3. Pure tree model (`tree.rs`, new module, native-testable)
 
@@ -189,6 +198,10 @@ Build rules (deterministic, source-order preserving):
   property of the **root** node of each subtree (the reference filters `roots`,
   not every node); children inherit their placement from the root they hang
   under. **Not** the position heuristic — isolation comes from data.
+  **Eng review (scope, D1 refined):** the field lands in `ara-core` now, but the
+  `.isobox` DOM is **rendered only when `TreeModel.isolated` is non-empty** (§4
+  already gates this) — so today's demo (zero isolated nodes) ships no dead
+  isobox chrome. Field present-but-inert until a corpus supplies isolated roots.
 - Empty manifest → empty `TreeModel`.
 
 **`ara-core` change (D1 = A).** Add `pub isolated: bool` to `Node`
@@ -271,6 +284,22 @@ The `{shown} / {N} steps` / `step {i} / {N}` readout is a toolbar-level shared
 signal (see step 6 / the tree-view note), shown in both modes exactly as the
 reference does. Loading / Error / Empty surfaces are unchanged and
 mode-independent.
+
+**Eng review (architecture — shared readout has an owner):** the readout state
+must be **lifted into `App`**, which is already the single source of truth for
+`selected` / `filter` / `layout` / `pan_zoom`. Concretely, `App` owns:
+- `node_order: Memo<Vec<NodeId>>` (derived from the loaded manifest — pre-order
+  DFS == `manifest.nodes` order),
+- the `matching: Memo<HashSet<NodeId>>` — **moved up from inside `MapPane`'s
+  Graph arm** (`lib.rs:156`, where it is currently rebuilt in the render
+  closure), so there is one stable instance read by both the header and the map,
+- a derived readout string (filter form vs. replay form).
+
+`App` passes read handles to **both** `Toolbar` (renders `#rstat` in the header)
+and `MapPane`/`ReplayBar`. This resolves the plan's earlier under-specification
+(the header `Toolbar` and `MapPane` are sibling subtrees — neither could see a
+Memo built inside the other). It also removes the incidental smell of rebuilding
+`matching` inside a render closure.
 
 ### 6. Replay stepper (`replay.rs` pure helpers + `ReplayBar` component)
 
@@ -359,8 +388,8 @@ manifest order for a pre-order manifest); `step` clamp-at-both-ends /
 | `state.rs` | + `DisplayMode` enum + tests |
 | `tree.rs` | **new** — pure `tree_model` + `TreeView` component + tests |
 | `replay.rs` | **new** — pure `node_order` / `step` / `counter` + `ReplayBar` + tests |
-| `toolbar.rs` | + `DisplayToggle` component |
-| `lib.rs` | + `display` signal; pass to `MapPane`; render `DisplayToggle`; wasm-only ←/→ key listener; branch `MapPane` on mode + render `ReplayBar` |
+| `toolbar.rs` | + generic `SegToggle`; `LayoutToggle`/`DisplayToggle` become thin callers (DRY) |
+| `lib.rs` | + `display` signal; **lift `node_order` + `matching` Memo + readout into `App`** (matching moves up from `MapPane`); pass read handles to `Toolbar` + `MapPane`; render `DisplayToggle`; wasm-only ←/→ key listener; branch `MapPane` on mode + render `ReplayBar` |
 | `public/styles.css` | + `.tree-map` scoped skin, `.replay-bar`, `--iso-*` tokens |
 | `tests/web.rs` | + tree render / toggle / replay browser tests; `isolated: false` in fixture JSON |
 | `docs/stage-3-viewer.md` | + "Display modes" section |
@@ -390,7 +419,20 @@ manifest order for a pre-order manifest); `step` clamp-at-both-ends /
     strikethrough class, `.isobox` present (isolated-root fixture), `⇠` dep
     marker + `.deptarget` on hover, `DisplayToggle` flips + swaps the rendered
     surface, replay next/prev updates `selected` + step count. Add `isolated`
-    to the fixture JSON.
+    to the fixture JSON. **Eng review — added coverage (3 findings):**
+    - **Keyboard listener + guard:** (a) `ArrowRight`/`ArrowLeft` dispatched with
+      focus *outside* inputs advances/retreats `selected`; (b) `ArrowLeft`
+      dispatched while a search `<input>` is focused does **not** change
+      `selected` — proves the `INPUT`/`SELECT` tagName guard (risk (b)).
+    - **Replay lifecycle:** Play from a mid-list selection ticks to the last node
+      and **auto-stops** (label back to `▶ Replay`, `selected` stays at last, no
+      wrap); plus a code-level assertion that the interval is cleared in
+      `on_cleanup` (unmount), not just on the pause button (risk (c) — silent
+      timer leak).
+    - **`SegToggle` contract for `DisplayToggle`:** mirror
+      `layout_toggle_flips_active_segment` — assert `data-mode='graph'/'tree'`,
+      `is-active` flips, `aria-pressed` updates. With one shared `SegToggle`
+      impl, one test per toggle proves the contract holds for both enums.
 11. `cargo build`, `cargo test --workspace`, `wasm-pack test --headless --chrome
     crates/ara-viewer`.
 12. Regenerate the embedded viewer bundle (`scripts/embed-viewer.sh`) so
@@ -480,63 +522,91 @@ part 4):**
 or structured markdown (affects whether `DetailPane` needs a markdown renderer);
 and any `schema_version` guarantee (affects whether we branch on version).
 
+## NOT in scope
+
+- **Part 4 (layer panels + abstract)** — deferred to `T-REAL-CORPUS`; no schema
+  fields to render inertly today (§ Scope decision).
+- **Per-node narrative (#12)** — lands with `T-REAL-CORPUS`; graceful omission
+  today, tree-list is not blocked on it (§ Future).
+- **Isolation *render* (isobox DOM)** — the `Node.isolated` field lands now, but
+  the `.isobox` is emitted only when isolated roots exist; the demo has none, so
+  no visible isobox ships this PR (eng review, D1 refined).
+- **Diff/scrim/shadow CSS tokens** — only `--iso-*` added now; the rest land
+  with part 4.
+- **Codex/cross-model outside voice** — skipped at the human dev's request this
+  run.
+
+## What already exists (reused, not rebuilt)
+
+- `kind::kind_meta` — single glyph/class/badge source; glyphs updated (D2), role
+  unchanged. Both renderers read it.
+- `filter::node_matches` + the `matching: Memo` — reused for tree dimming (Memo
+  lifted to `App`, see architecture finding).
+- `detail.rs` (`DetailPane`/`detail_model`) — unchanged; tree selection drives it
+  via the shared `selected` signal.
+- `state::LayoutMode` — the exact pattern `DisplayMode` mirrors; `LayoutToggle`
+  the exact pattern the new generic `SegToggle` absorbs.
+- `scene.rs` pure model + `ManifestSource`/live-reload — untouched.
+- `parse.rs::detect_cycles` — already rejects Child cycles at parse time, so the
+  tree cycle-guard is belt-and-suspenders for hand-built manifests (keep; cheap).
+
 ## GSTACK REVIEW REPORT
 
-Design review run as a **fidelity audit**: the human dev pinned the design target
-to the published `ARA-Labs/ARA-Demo` static artifact ("render the tree the same
-way as the current static artifact"), so the correct review is "does the plan
-reproduce `nanogpt_ara/trajectory.html` exactly?" — not mockup generation. The
-reference file was cloned and read (tree render: `renderMap`/`nodeRow`/
-`renderSubtree`; replay: `step`/`play`/`stop`; filter: `applyFilters`/`rstat`;
-CSS `:root` tokens + `.node`/`.kid`/`.isobox`/`.deptarget` rules).
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | issues_folded | 5 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | issues_folded | 7 fidelity issues (prior) |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-| Run | Source | Status | Findings |
-|-----|--------|--------|----------|
-| 1 | plan-design-review (fidelity audit vs trajectory.html) | issues_found | 7 |
+**Eng review (this run).** Scope challenged, then reduced: D1 refined to
+**keep `Node.isolated` in ara-core but gate the isobox render on non-empty
+`isolated`** — no dead chrome ships. Five findings, all folded into the plan:
 
-Design-completeness rating: **4/10 before → 8/10 after.** Before: the plan was
-written from issue #7's prose table, not the reference source, so it invented
-class names (`.chip`/`.dep-marker`/`.selected`), a wrong isolation heuristic, a
-wrong replay interval, and Tree-only step-count chrome. After: every class,
-glyph, marker, spacing token, and control is pinned to the reference, with the
-two genuine schema/authority forks (isolation field, glyph set) raised as
-explicit decisions rather than silently assumed. It is not a 10 because two
-faithfulness questions (1: `isolated` schema field; 2: `kind_meta` glyphs) are
-one-way-ish calls only the human dev should make.
+1. **[Architecture, conf 9/10] Shared step-count readout had no owner.** The
+   `matching` Memo is built inside `MapPane` (`lib.rs:156`) while the `#rstat`
+   readout must live in the header `Toolbar` (a sibling subtree) — neither can
+   see the other's state. Fixed §5: lift `node_order`, `matching`, and the
+   readout into `App`; pass read handles to both. Also removes rebuilding
+   `matching` in a render closure. → T1 (P1).
+2. **[Code quality/DRY, conf 9/10] `DisplayToggle` would duplicate
+   `LayoutToggle`.** Fixed §2: extract a generic `SegToggle`; both toggles become
+   thin callers. → T2 (P2).
+3. **[Test, conf 8/10] Keyboard ←/→ guard untested** (plan's own risk (b)).
+   Added: step tests + a focus-in-`<input>` guard test. → T3 (P2).
+4. **[Test, conf 8/10] Replay play-interval teardown untested** (risk (c),
+   silent leak). Added: auto-stop-at-last test + `on_cleanup` teardown assertion.
+   → T4 (P2).
+5. **[Test, conf 7/10] Shared `SegToggle` contract unproven for `DisplayToggle`.**
+   Added a mirror of `layout_toggle_flips_active_segment`. → T5 (P3).
 
-Findings folded into the plan:
-1. **[HARD — correctness] Isolation was invented.** Reference reads a per-node
-   `isolated` boolean; plan used a "first-root = main" heuristic. `ara-core` has
-   no such field. Rewrote §3 with options A (add `Node.isolated`) / B (defer
-   isobox) / reject-C (heuristic). Decision 1.
-2. **[HARD — fidelity] Wrong class names.** Plan said `.chip`/`.dep-marker`/
-   `.selected`/`.dead_end`; reference is `.glyph`/`.dep`/`.sel`/`.dead`. Fixed
-   throughout §4 + §7 to the verbatim reference names (scoped under `.tree-map`).
-3. **[fidelity] Glyph divergence.** Reference tree uses `Q ✦ → ✗ !`; our
-   `kind_meta` uses `Q E D X I`. Raised as decision 2 (one glyph authority vs
-   two); recommend updating `kind_meta` to match the published artifact.
-4. **[fidelity] Replay interval wrong.** Plan said ~1.1 s; reference is 1300 ms.
-   Also captured stop-first on prev/next, `▶ Replay`⇄`⏸ Pause` labels, auto-stop.
-5. **[fidelity] Step-count mis-scoped.** Plan made it Tree-only chrome inside
-   `.tree-map`; reference `#rstat` is a shared toolbar span used by filter AND
-   replay in BOTH modes. Moved to toolbar; resolved the "Graph mode too?" open Q.
-6. **[fidelity] Label fallback.** Reference row label is `title ?? body ??
-   "(untitled)"`; plan used `label ?? id`. Fixed in §3 (decision 3 if disagreed).
-7. **[fidelity] Markup shape / dep marker.** Reference emits ONE `.dep` marker
-   per row (comma-joined ids) with a `title`, and nests children in a SIBLING
-   `.kid` div. Plan implied per-target markers. Fixed §4.
+**Test coverage:** pure helpers (`tree_model`, `step`/`counter`/`node_order`,
+`kind_meta`) are ★★★; the 5 gaps were all on wasm-only interaction paths and are
+now closed by T3–T5. No regressions introduced (D2 glyph change is covered by the
+existing per-variant `kind.rs` tests, which the plan already updates).
 
-CROSS-MODEL: not run — a fidelity audit against a fixed published reference is
-resolved by reading that reference, not by soliciting alternative designs.
-CODEX: not run (same reason).
+**Performance:** no issues. Builders are O(nodes+links); Memos gate filter
+recompute; the DOM tree is smaller than the SVG graph already rendered.
 
-VERDICT: **PROCEED.** The plan is faithful and implementation-ready. Both gating
-decisions are resolved by the human dev: D1 = A (add `Node.isolated`), D2 = i
-(update `kind_meta` glyphs to the reference set). No design mockups generated
-(correct: the design is published and must be matched, not re-explored).
+**Parallelization:** Lane A: `ara-core` `Node.isolated` (steps 1) — blocks the
+viewer tree work (compile fanout). Lane B: `kind_meta` glyphs (step 2) —
+independent. After A+B merge: Lane C (viewer: `DisplayMode`/`tree.rs`/`replay.rs`/
+`SegToggle`/`lib.rs` wiring, steps 3–9) is sequential (shared `lib.rs`). Then
+tests + embed regen + docs. Launch A + B in parallel worktrees; merge; then C.
+Conflict flag: A and C both touch viewer test `Node {…}` literals — do A first.
 
-**Decisions resolved after review (D1 = A, D2 = i):**
-- **D1 — Isolation field → A.** `ara-core` gains a serde-default `Node.isolated: bool`; the tree reproduces the reference isobox exactly.
-- **D2 — Glyph authority → i.** `kind_meta` glyphs change to `Q ✦ → ✗ ! •`; both renderers match the published artifact, and the shipped SVG graph's glyphs change accordingly (in the CHANGELOG).
+**Failure modes (new codepaths):** (a) leaked play interval → covered by T4 +
+`on_cleanup`, no silent failure. (b) arrow keys hijack search input → covered by
+T3 guard test. (c) Child cycle in a malformed hand-built manifest → tree
+cycle-guard terminates (parse.rs already rejects it for loaded manifests). (d)
+`Node.isolated` fanout → compile-time break, caught by `cargo build`.
+
+CROSS-MODEL: not run (outside voice skipped at human dev's request).
+CODEX: not run (not authenticated; subagent skipped per request).
+
+VERDICT: **ENG CLEARED — ready to implement.** Prior design fidelity audit stands
+(7 issues folded). Both gating decisions remain resolved: D1 = A (refined to
+gated-isobox render), D2 = i (`kind_meta` glyphs → reference set).
 
 NO UNRESOLVED DECISIONS
