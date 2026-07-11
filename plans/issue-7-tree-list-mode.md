@@ -45,7 +45,9 @@ the sections below and called out in the review report.
   inside one `<div class="isobox"><div class="isohdr">isolated subtree</div>…`.
 - Glyphs (`GLYPH`): `question:"Q"`, `experiment:"✦"`, `decision:"→"`,
   `dead_end:"✗"`, `insight:"!"`, plus `pivot:"↻"` and `default:"•"`.
-  **These differ from our SVG viewer's `kind_meta` glyphs** (`E`/`D`/`X`/`I`).
+  Our SVG viewer's `kind_meta` currently uses `Q E D X I`; **decision D2 = (i)**,
+  so `kind_meta` is updated to the reference glyphs and both renderers match the
+  published artifact (see §3 + the resolved-decisions note).
 - Dep marker text: `⇠ {comma-joined ids}` with `title="depends on {ids}"`.
 - Replay interval: **1300 ms** (not 1.1 s). Buttons: `‹` / `▶ Replay`⇄`⏸ Pause`
   / `›`. Prev/next call `stop()` first. Arrow keys guarded by
@@ -77,10 +79,12 @@ the sections below and called out in the review report.
 
 ## Reuse (already built, display-agnostic — carries over unchanged)
 
-`kind::kind_meta`, `detail.rs` (`DetailPane` + `detail_model`), the
-`filter::node_matches` predicate, and the shared `selected` / `filter` /
-`pan_zoom` / `layout` signals in `App`. The pure `scene.rs` model stays for
-Graph mode. `ManifestSource` and the live-reload path are untouched.
+`kind::kind_meta` (**glyphs updated per D2, everything else unchanged** — its
+`css_class`/`badge`/single-source-of-truth role carry over; both renderers now
+read the reference glyph set from it), `detail.rs` (`DetailPane` +
+`detail_model`), the `filter::node_matches` predicate, and the shared `selected`
+/ `filter` / `pan_zoom` / `layout` signals in `App`. The pure `scene.rs` model
+stays for Graph mode. `ManifestSource` and the live-reload path are untouched.
 
 ## Proposed solution
 
@@ -137,20 +141,22 @@ pub struct TreeModel { pub roots: Vec<TreeNode>, pub isolated: Vec<TreeNode> }
 pub fn tree_model(manifest: &Manifest) -> TreeModel;
 ```
 
-**Glyph source — divergence to resolve.** The reference tree glyphs
-(`Q ✦ → ✗ !`) differ from our SVG viewer's `kind_meta` glyphs (`Q E D X I`).
-The fidelity mandate says match the reference; but `kind_meta` is documented as
-"the single source of truth for glyph". Reproducing the reference tree exactly
-means the tree uses the reference glyph set while the SVG graph keeps its own —
-i.e. glyphs become renderer-specific, not a single source of truth. **Decision
-needed (see review report):** either (i) change `kind_meta` glyphs to the
-reference set (`✦ → ✗ !`) so both renderers match the published artifact and the
-single-source-of-truth invariant holds — this visibly changes the existing SVG
-graph, or (ii) add a tree-specific glyph map in `tree.rs` and note `kind_meta`
-is SVG-graph-specific. Option (i) is more faithful to "match the published ARA"
-and keeps one glyph authority; confirm before implementing. `label` also follows
-the reference precisely: `title ?? body ?? "(untitled)"` (the SVG path uses
-`label ?? id`; the tree must use the reference fallback chain).
+**Glyph source — resolved (D2 = i).** `kind_meta` stays the single source of
+truth for glyphs; its glyph column is updated to the reference set so both
+renderers match the published artifact: `Question 'Q'`, `Experiment '✦'`,
+`Decision '→'`, `DeadEnd '✗'`, `Insight '!'`, `Other '•'` (the reference's
+`default`). This **visibly changes the shipped SVG graph** (E→✦, D→→, X→✗, I→!) —
+an intentional, small design change to align the graph with the published ARA
+visual language, called out in the CHANGELOG. `TreeRow.glyph` is populated from
+`kind_meta(&node.kind).glyph`; there is no tree-local glyph map. Note the
+reference glyphs are multi-byte (`✦ → ✗`), so `TreeRow.glyph` and
+`KindMeta.glyph` stay `char` (a Rust `char` holds any single Unicode scalar —
+fine) and the SVG `<text>` / DOM chip render them unchanged.
+`kind_meta`'s doc comment + its per-variant unit tests are updated to the new
+glyphs (the `question_mapping`/`experiment_mapping`/… tests in `kind.rs` assert
+exact glyph chars and must change with it). `label` also follows the reference
+precisely: `title ?? body ?? "(untitled)"` (the SVG path uses `label ?? id`; the
+tree must use the reference fallback chain).
 
 Build rules (deterministic, source-order preserving):
 
@@ -164,32 +170,38 @@ Build rules (deterministic, source-order preserving):
   re-expanded).
 - **`dep_targets`** per row = the `to` ids of that node's outgoing
   `LinkKind::DependsOn` links, in source order.
-- **Isolated partition — CORRECTED after reading the reference.** The reference
-  does **not** infer isolation from root position. It reads a per-node boolean
-  **`isolated`** field off the JSON (`normalRoots = roots.filter(id=>!byId.get(id).isolated)`).
-  **Our `ara_core::Node` has no `isolated` field**, and `docs/manifest-schema.md`
-  never mentions one. So we cannot reproduce the reference's isobox partition
-  from today's schema. Options (this is now the primary open decision — see the
-  review report):
-  - **(A) Widen the schema** (small `ara-core` change): add
-    `Node.isolated: bool` (default `false`, `#[serde(default, skip_serializing_if
-    = "is_false")]`) sourced from an `isolated:` key on the raw node, mirroring
-    how the reference JSON carries it. This is the **only** way to match the
-    reference exactly, but it breaks the plan's "no `ara-core` changes" claim.
-  - **(B) Render every root at top level, no isobox this PR.** Faithful for the
-    common single-root ARA (our demo has exactly one child-root, `N01`, so the
-    isobox never appears anyway). The isobox lands with the schema-widening PR
-    (aligns naturally with `T-REAL-CORPUS`, which already touches the schema).
-  - **(C) Heuristic** (the original "first root = main, rest isolated"). Rejected:
-    it fabricates isolation the reference derives from data, and would mis-group
-    legitimately-parallel roots.
+- **Isolated partition — resolved (D1 = A, widen the schema).** The reference
+  reads a per-node boolean **`isolated`** field off the JSON
+  (`normalRoots = roots.filter(id=>!byId.get(id).isolated)`). `ara_core::Node`
+  gains that field (see the ara-core change below), so `tree_model` partitions
+  roots exactly as the reference does:
+  `roots.partition(|r| node(r).isolated)` → non-isolated roots into
+  `TreeModel.roots`, isolated roots into `TreeModel.isolated`. Isolation is a
+  property of the **root** node of each subtree (the reference filters `roots`,
+  not every node); children inherit their placement from the root they hang
+  under. **Not** the position heuristic — isolation comes from data.
 - Empty manifest → empty `TreeModel`.
 
-Unit tests: single-tree nesting + depth; `dep_targets` populated from DependsOn
-only (not Child); dead-end row flagged; cycle guard terminates; `label ?? id`
-fallback; a round-trip against the checked-in `public/manifest.json` (asserts
-the demo's single root `N01` + 15-node count). Isolated-partition tests are
-gated on the decision above (only meaningful under A).
+**`ara-core` change (D1 = A).** Add `pub isolated: bool` to `Node`
+(`crates/ara-core/src/manifest.rs`), serialized with
+`#[serde(default, skip_serializing_if = "std::ops::Not::not")]` so old manifests
+(and the `false` default) round-trip without emitting the key. Source it from an
+`isolated:` scalar on the raw node in `schema.rs` (`#[serde(default)]`, defaults
+`false`) and pass it through in `parse.rs`'s node construction. Update
+`docs/manifest-schema.md` to document the field. Every `Node { … }` literal in
+the codebase's tests (viewer `scene.rs`/`filter.rs`/`detail.rs` test helpers,
+`tests/web.rs` fixture JSON, ara-core parse tests) must add `isolated: false`
+(or rely on the `..` spread where used) — this is a compile-fanout to fix, not a
+behaviour change. The checked-in `public/manifest.json` needs no change (the
+field defaults to `false`; the demo has no isolated nodes).
+
+Unit tests: single-tree nesting + depth; **isolated-root partition** (a root
+with `isolated: true` lands in `TreeModel.isolated`, its subtree with it; a
+`false` root lands in `roots`); `dep_targets` populated from DependsOn only (not
+Child); dead-end row flagged; cycle guard terminates; `title ?? body ??
+"(untitled)"` label fallback; a round-trip against the checked-in
+`public/manifest.json` (asserts the demo's single root `N01`, 15-node count, and
+empty `isolated`).
 
 ### 4. `TreeView` component (`tree.rs`)
 
@@ -206,8 +218,10 @@ reference `renderMap` markup exactly:
   `.dead_end`) — all scoped under `.tree-map`.
 - `.node.dead` (dead-end, i.e. `row.className = "node dead"`) applies the
   reference rule `color:--warn; text-decoration:line-through` to `.ntitle`.
-- Isolated roots (only under isolated-decision A) render inside a trailing
-  `<div class="isobox"><div class="isohdr">isolated subtree</div>…`.
+- Isolated roots (`TreeModel.isolated`, non-empty) render inside a trailing
+  `<div class="isobox"><div class="isohdr">isolated subtree</div>…`, after the
+  normal roots — exactly as `renderMap` does. When `isolated` is empty (today's
+  demo) no isobox is emitted.
 - **`depends_on`** rendered as `<span class="dep" title="depends on {ids}">⇠ {ids}</span>`
   where `{ids}` is the comma-joined dep target list — one marker per row, exactly
   as `nodeRow` does it (not one marker per target).
@@ -339,81 +353,84 @@ manifest order for a pre-order manifest); `step` clamp-at-both-ends /
 | `toolbar.rs` | + `DisplayToggle` component |
 | `lib.rs` | + `display` signal; pass to `MapPane`; render `DisplayToggle`; wasm-only ←/→ key listener; branch `MapPane` on mode + render `ReplayBar` |
 | `public/styles.css` | + `.tree-map` scoped skin, `.replay-bar`, `--iso-*` tokens |
-| `tests/web.rs` | + tree render / toggle / replay browser tests |
+| `tests/web.rs` | + tree render / toggle / replay browser tests; `isolated: false` in fixture JSON |
 | `docs/stage-3-viewer.md` | + "Display modes" section |
-| `ara-core/src/{manifest,schema,parse}.rs` | **only under isolated-decision A** — add `Node.isolated` + `docs/manifest-schema.md` |
-| `kind.rs` | **only under glyph-decision (i)** — reference glyph set `✦ → ✗ !` (touches the shipped SVG graph) |
+| `ara-core/src/{manifest,schema,parse}.rs` | **D1 = A** — add `Node.isolated: bool` (serde-default false) + `docs/manifest-schema.md` |
+| `kind.rs` | **D2 = i** — reference glyph set `Q ✦ → ✗ ! •` (updates glyph column + its unit tests; changes the shipped SVG graph glyphs) |
 
 ## Implementation steps
 
-1. `DisplayMode` in `state.rs` + native tests.
-2. `tree.rs`: pure `tree_model` + `TreeRow`/`TreeNode`/`TreeModel` + native
+1. **`ara-core` `Node.isolated` (D1 = A):** add the field in `manifest.rs`
+   (serde-default false), source it in `schema.rs` + `parse.rs`, document it in
+   `docs/manifest-schema.md`, and fix the `Node { … }` literal fanout across
+   ara-core + viewer tests so the workspace compiles. `cargo test -p ara-core`.
+2. **`kind_meta` glyphs (D2 = i):** update the glyph column in `kind.rs` to
+   `Q ✦ → ✗ ! •` and its per-variant unit tests. `cargo test -p ara-viewer`
+   (native) confirms the graph scene tests still pass with new glyphs.
+3. `DisplayMode` in `state.rs` + native tests.
+4. `tree.rs`: pure `tree_model` + `TreeRow`/`TreeNode`/`TreeModel` + native
    tests (build, isolated partition, deps, cycle guard, demo round-trip).
-3. `replay.rs`: pure `node_order` / `step` / `counter` + native tests.
-4. `TreeView` component in `tree.rs`; `ReplayBar` in `replay.rs`.
-5. `DisplayToggle` in `toolbar.rs`.
-6. Wire `lib.rs`: `display` signal, `MapPane` mode branch, `ReplayBar`, header
-   toggle, wasm-only key listener.
-7. `.tree-map` scoped CSS + `.replay-bar` + `--iso-*` tokens in `styles.css`.
-8. Browser tests in `tests/web.rs`: tree rows + nesting + `.kid`, dead
-   strikethrough class, `.isobox` present, `⇠` dep marker, `DisplayToggle`
-   flips + swaps the rendered surface, replay next/prev updates `selected`.
-9. `cargo build`, `cargo test --workspace`, `wasm-pack test --headless --chrome
-   crates/ara-viewer`.
-10. Regenerate the embedded viewer bundle (`scripts/embed-viewer.sh`) so
+5. `replay.rs`: pure `node_order` / `step` / `counter` + native tests.
+6. `TreeView` component in `tree.rs`; `ReplayBar` in `replay.rs`.
+7. `DisplayToggle` in `toolbar.rs`.
+8. Wire `lib.rs`: `display` signal, `MapPane` mode branch, `ReplayBar`, header
+   toggle, shared toolbar step-count readout, wasm-only ←/→ key listener.
+9. `.tree-map` scoped CSS (reference values) + replay `.btn`/`.count` + `--iso-*`
+   tokens in `styles.css`.
+10. Browser tests in `tests/web.rs`: tree rows + nesting + `.kid`, `.dead`
+    strikethrough class, `.isobox` present (isolated-root fixture), `⇠` dep
+    marker + `.deptarget` on hover, `DisplayToggle` flips + swaps the rendered
+    surface, replay next/prev updates `selected` + step count. Add `isolated`
+    to the fixture JSON.
+11. `cargo build`, `cargo test --workspace`, `wasm-pack test --headless --chrome
+    crates/ara-viewer`.
+12. Regenerate the embedded viewer bundle (`scripts/embed-viewer.sh`) so
     `ara serve` ships the new UI; the `viewer-embed-fresh` CI check requires it.
-11. Bump patch version in `Cargo.toml` + `CHANGELOG.md` `[Unreleased]` entry.
-12. Update `docs/stage-3-viewer.md`.
+13. Bump patch version in `Cargo.toml` + `CHANGELOG.md` `[Unreleased]` entry
+    (note the SVG-graph glyph change under `Changed`).
+14. Update `docs/stage-3-viewer.md`.
 
 ## Scope / risk
 
-Additive, medium size — **with two caveats the audit exposed:** faithful
-reproduction may require an `ara-core` schema field (`isolated`, decision 1A) and
-a `kind_meta` glyph change that touches the shipped SVG graph (decision 2i).
-Under the viewer-only fallbacks (1B + 2ii) the "no `ara-core`/graph change" claim
-holds but the tree isn't yet 100% faithful (no isobox; graph keeps `E D X I`).
-Stage-2 layout, `scene.rs`, and the Stage-4 server are untouched either way.
-New surface area: one enum, one pure tree builder, one pure replay helper set,
-one `TreeView` component, the `ReplayBar` toolbar controls, one toggle, and a
-scoped CSS block copied from the reference. Main risks: (a) CSS class collision —
-mitigated by the `.tree-map` scope (`.node`/`.sel`/`.dim`/`.glyph` all scoped);
-(b) the ←/→ listener hijacking search input — mitigated by the reference's exact
-INPUT/SELECT target guard; (c) the play-interval leaking — mitigated by tearing
-it down on pause / unmount / reaching the last node.
+Additive, medium size, with two deliberate cross-cutting changes locked in for
+fidelity: **(D1=A)** a serde-default `Node.isolated` field in `ara-core` — purely
+additive to the wire format (old manifests round-trip, the field is omitted when
+`false`), and **(D2=i)** the `kind_meta` glyph set changes to the published
+`Q ✦ → ✗ ! •`, which **visibly restyles the existing SVG graph's node glyphs**
+(E→✦, D→→, X→✗, I→!). Both are intentional and land in the CHANGELOG. Stage-2
+layout, `scene.rs`, and the Stage-4 server are untouched. New surface area: one
+enum, one pure tree builder, one pure replay helper set, one `TreeView`
+component, the `ReplayBar` toolbar controls, one toggle, and a scoped CSS block
+copied from the reference. Main risks: (a) CSS class collision — mitigated by the
+`.tree-map` scope (`.node`/`.sel`/`.dim`/`.glyph` all scoped); (b) the ←/→
+listener hijacking search input — mitigated by the reference's exact INPUT/SELECT
+target guard; (c) the play-interval leaking — mitigated by tearing it down on
+pause / unmount / reaching the last node; (d) the `Node.isolated` field fanout —
+a compile-time break across every `Node { … }` literal, caught immediately by
+`cargo build` (mechanical, not behavioural).
 
-## Decisions to confirm in review
+## Decisions (all resolved)
 
-These are the real forks the audit surfaced. Reference behaviour is quoted; the
-recommendation is the most faithful option.
+The two forks the audit surfaced are resolved by the human dev; recorded here so
+implementation has no open questions.
 
-1. **Isolated-subtree rule — needs a schema call.** The reference reads a
-   per-node `isolated` boolean; `ara_core::Node` has no such field. **Recommend
-   (A):** add `Node.isolated: bool` to `ara-core` (sourced from an `isolated:`
-   raw key, `serde default false`) so the isobox reproduces exactly. This breaks
-   the plan's "no `ara-core` change" claim but is the only faithful path. If you
-   want to keep this PR viewer-only, take **(B)**: render all roots at top level,
-   ship the isobox with the schema-widening PR (our demo has one root, so no
-   visible difference today). **Not (C)** the position heuristic — it fabricates
-   isolation.
-2. **Glyph set — one authority or two?** Reference tree glyphs are `Q ✦ → ✗ !`;
-   our `kind_meta` (the documented single source of truth) uses `Q E D X I`.
-   **Recommend (i):** update `kind_meta` to the reference glyphs so both the SVG
-   graph and the tree match the published artifact and there's still one glyph
-   authority — this visibly changes the existing SVG graph's glyphs (E→✦, D→→,
-   X→✗, I→!). If you'd rather leave the shipped graph untouched, take (ii): a
-   tree-local glyph map, and downgrade `kind_meta`'s doc to "SVG-graph glyphs".
-3. **Row label fallback.** Reference uses `title ?? body ?? "(untitled)"`; our
-   SVG path uses `label ?? id`. Tree mode will follow the reference chain. Flag
-   only if you'd prefer the tree keep showing the id when a title is absent
-   (less faithful, but more debuggable).
-4. **Replay interval.** Fixed at the reference **1300 ms** (was mis-stated as
-   1.1 s in the first draft). Auto-stops at the last node, no loop. Confirm the
-   feel is fine or name a different value.
-
-**Resolved by reading the reference (no longer open):** the step count shows in
-both modes (toolbar-level, shared by filter + replay) — it was never tree-only;
-`Prev` from no-selection lands on the first node (reference clamp quirk), not the
-last.
+1. **Isolated-subtree rule → (A) widen the schema.** Add `Node.isolated: bool`
+   to `ara-core` (serde-default `false`, sourced from an `isolated:` raw key) so
+   the isobox reproduces the reference exactly (`normalRoots` vs `isoRoots`).
+   Rejected (B) defer-isobox (ships an incomplete tree) and (C) position
+   heuristic (fabricates isolation). Details in §3 + the ara-core change note.
+2. **Glyph set → (i) one authority, update `kind_meta`.** `kind_meta` glyphs
+   change to the published `Q ✦ → ✗ ! •` so both the SVG graph and the tree match
+   the artifact and there's still one glyph source of truth. This visibly
+   restyles the existing SVG graph (E→✦, D→→, X→✗, I→!) — intentional, in the
+   CHANGELOG. Rejected (ii) tree-local glyph map (two authorities).
+3. **Row label fallback → reference chain.** Tree rows use `title ?? body ??
+   "(untitled)"` (the SVG path keeps `label ?? id`).
+4. **Replay interval → 1300 ms** (reference value), auto-stops at the last node,
+   no loop.
+5. **Step count → both modes** (toolbar-level, shared by filter + replay), and
+   **`Prev` from no-selection → first node** (reference clamp quirk). Resolved by
+   reading the reference.
 
 ## GSTACK REVIEW REPORT
 
@@ -465,11 +482,13 @@ CROSS-MODEL: not run — a fidelity audit against a fixed published reference is
 resolved by reading that reference, not by soliciting alternative designs.
 CODEX: not run (same reason).
 
-VERDICT: **REVISE-THEN-PROCEED.** The plan is now faithful and implementation-ready
-for everything except the two decisions below, which gate how faithful the first
-PR can be. No design mockups generated (correct: the design is published and must
-be matched, not re-explored).
+VERDICT: **PROCEED.** The plan is faithful and implementation-ready. Both gating
+decisions are resolved by the human dev: D1 = A (add `Node.isolated`), D2 = i
+(update `kind_meta` glyphs to the reference set). No design mockups generated
+(correct: the design is published and must be matched, not re-explored).
 
-**UNRESOLVED DECISIONS:**
-- **D1 — Isolation field.** Add `Node.isolated` to `ara-core` (faithful isobox, breaks "viewer-only") or defer the isobox to the schema-widening PR (viewer-only, no visible diff on today's single-root demo)?
-- **D2 — Glyph authority.** Change `kind_meta` glyphs to the reference set `✦ → ✗ !` (both renderers match the published artifact, but the shipped SVG graph's glyphs visibly change) or keep a tree-local glyph map (SVG graph untouched, two glyph authorities)?
+**Decisions resolved after review (D1 = A, D2 = i):**
+- **D1 — Isolation field → A.** `ara-core` gains a serde-default `Node.isolated: bool`; the tree reproduces the reference isobox exactly.
+- **D2 — Glyph authority → i.** `kind_meta` glyphs change to `Q ✦ → ✗ ! •`; both renderers match the published artifact, and the shipped SVG graph's glyphs change accordingly (in the CHANGELOG).
+
+NO UNRESOLVED DECISIONS
