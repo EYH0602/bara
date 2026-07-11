@@ -144,3 +144,51 @@ cold. Remove an item when it lands.
   cross-target golden test cannot be made to pass. Mature JS layout is the
   fallback because it is proven and runs client-side for free.
 - **Depends on:** outcome of the Stage 2 step-1 spike.
+
+## Deferred from Stage 3 design review (2026-07-10)
+
+### T-DESIGN-TOKENS — extract the published ARA token set into docs
+- **What:** Capture the published `research-visualizer` token set (warm-cream
+  palette, glyph+label kind encoding, dead-end-only colour rule, `ui-sans-serif`/
+  `ui-monospace` fonts) into `docs/design-tokens.md` (or `DESIGN.md`).
+- **Why:** Stage 3 vendors these tokens into the client stylesheet; without a
+  documented source of truth, Stage 4/5 (and any future surface) will re-derive
+  colours ad hoc and drift from the published ARA look.
+- **Context:** The reference is `ARA-Labs/ARA-Demo` `*/trajectory.html`
+  (`<style>:root`). Design review chose "hybrid: SVG graph, published skin", so the
+  tokens are now load-bearing across stages.
+- **Depends on:** Stage 3 vendoring the tokens.
+
+### T-GRAPH-KBD-NAV — arrow-key spatial traversal of the SVG graph
+- **What:** Let keyboard users walk node-to-node across the SVG DAG by spatial
+  adjacency (arrow keys), beyond the Tab-order + search/filter keyboard path
+  Stage 3 ships.
+- **Why:** Full keyboard parity for power users navigating a large graph; Tab
+  order alone is tedious on a wide DAG.
+- **Context:** Stage 3 ships focusable nodes (Tab, Enter/Space select) + toolbar
+  search/type/dead-end filters as the primary keyboard nav. Spatial arrow-walking
+  of an arbitrary DAG is non-trivial and was deferred so Stage 3 lands.
+- **Depends on:** Stage 3 SVG graph.
+
+## Deferred from Stage 3 eng review (2026-07-10)
+
+### T-VIEWER-DIST-PACKAGING — how the ara-viewer frontend reaches users
+- **What:** Decide and implement how the Trunk `dist/` (wasm + assets) from
+  `crates/ara-viewer` is distributed. `cargo install ara-cli` cannot serve a
+  generated/gitignored frontend.
+- **Why:** Stage 4 (`ara serve`) serves the `dist/`, and the `0.1.0` release
+  publishes `ara-core → ara-wasm → ara-cli` but not `ara-viewer`'s assets. Without
+  a plan, the released CLI has no frontend to serve.
+- **Context:** Options — embed `dist/` into the `ara-cli` binary at build time
+  (e.g. `rust-embed`), copy it during the release, or publish `ara-viewer` assets
+  separately. Surfaced by the Stage 3 eng-review outside voice (Codex).
+- **Depends on:** Stage 4 (`ara serve`) / the `0.1.0` release cut.
+
+### T-STAGE4-VERSION-BUMP — reconcile Stage 3/4 version collision
+- **What:** Update the Stage 4 plan: if Stage 3 takes `0.0.5`, Stage 4 is
+  `0.0.5 → 0.0.6` (both plans currently say `0.0.4 → 0.0.5`).
+- **Why:** Two PRs can't both bump to `0.0.5`; the per-stage patch-bump chain in
+  `stage-overview.md` breaks otherwise.
+- **Context:** One-line edit to `plans/stage-4-serve-live-reload.md` when Stage 3
+  merges. Surfaced by the Stage 3 eng-review outside voice.
+- **Depends on:** Stage 3 merge.
