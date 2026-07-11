@@ -152,7 +152,10 @@ code, kbd, samp, pre,
 .layout-toggle-btn {
   font-family: var(--font-body);
   font-size: 0.78rem;
-  color: var(--muted);
+  /* --ink (not --muted) so the resting label clears WCAG AA (4.5:1) — these
+     are interactive control labels, not decorative metadata. Matches the
+     hover/focus-visible colour below, so the state transition is subtle. */
+  color: var(--ink);
   background-color: var(--panel);
   border: none;
   padding: 0 0.6rem;
