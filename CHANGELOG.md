@@ -6,6 +6,31 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Viewer: **Tree display mode** — an alternate DOM indented tree-list rendering
+  of the exploration graph, reproducing the published `research-visualizer`
+  scaffold. Chosen with a **graph | tree** segmented toggle in the header (the
+  SVG graph stays the default). Rows show a kind glyph, node id, `⇠ id`
+  dependency marker, and title; children nest with a spine; dead ends are struck
+  through; isolated-subtree roots render in an `.isobox`; hovering a row
+  highlights its dependencies. Drives the same selection + filter as the graph.
+  (#7)
+- Viewer: **Replay stepper** in the toolbar (`‹ / ▶ Replay⇄⏸ Pause / ›`, `←`/`→`
+  keys) that steps the selection through node order in both display modes, with
+  a shared `step i / N` · `shown / N steps` readout. 1300 ms auto-play stops at
+  the last node; the `←`/`→` keys are guarded so they don't hijack the search
+  field. (#7)
+- Core: `Node.isolated` boolean manifest field (serde-default `false`, omitted
+  from the wire form when false) marking the root of an isolated subtree; drives
+  the tree mode's isolated-subtree box. Old manifests round-trip unchanged. (#7)
+
+### Changed
+- Viewer: node kind glyphs now use the published `research-visualizer` set —
+  `experiment ✦`, `decision →`, `dead_end ✗`, `insight !`, other `•` (question
+  stays `Q`) — read from the single `kind_meta` source by both the SVG graph and
+  the new tree-list. This visibly restyles the existing SVG graph's node glyphs.
+  (#7)
+
 ## [0.1.1] - 2026-07-11
 
 ### Added

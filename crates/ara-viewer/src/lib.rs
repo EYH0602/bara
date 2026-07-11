@@ -8,10 +8,12 @@ pub mod canvas;
 pub mod detail;
 pub mod filter;
 pub mod kind;
+pub mod replay;
 pub mod scene;
 pub mod source;
 pub mod state;
 pub mod toolbar;
+pub mod tree;
 
 use std::collections::HashSet;
 
@@ -19,10 +21,12 @@ use ara_core::NodeId;
 use detail::DetailPane;
 use filter::FilterState;
 use leptos::prelude::*;
+use replay::{ReplayBar, ReplayState};
 use scene::{GraphRenderer, GraphView, LayoutView, SvgRenderer};
 use source::{ManifestSource, connect_live, fetch_manifest};
-use state::{LayoutMode, LoadState, MapSurface, PanZoom, map_surface, safe_viewbox};
-use toolbar::{LayoutToggle, Toolbar};
+use state::{DisplayMode, LayoutMode, LoadState, MapSurface, PanZoom, map_surface, safe_viewbox};
+use toolbar::{DisplayToggle, LayoutToggle, Toolbar};
+use tree::{TreeView, tree_model};
 
 /// Mount the [`App`] component to `<body>`.
 ///
@@ -68,6 +72,49 @@ pub fn App() -> impl IntoView {
     // shape and uses the full viewport width. Split is the opt-in side-by-side.
     let layout: RwSignal<LayoutMode> = RwSignal::new(LayoutMode::default());
 
+    // ── Display mode (graph vs. tree; survives manifest swaps) ────────────────
+    // Graph (SVG DAG) is the default; Tree is the published DOM tree-list.
+    let display: RwSignal<DisplayMode> = RwSignal::new(DisplayMode::default());
+
+    // ── Shared derived state (lifted into App — the single owner) ─────────────
+    // node_order + the filter `matching` set + the `#rstat` readout live here so
+    // both the header Toolbar (which renders #rstat) and the map/replay (sibling
+    // subtrees) read one stable instance. `matching` used to be rebuilt inside
+    // MapPane's render closure; lifting it removes that and gives the header a
+    // handle to the same set.
+    let node_order: Memo<Vec<NodeId>> = Memo::new(move |_| match load_state.get() {
+        LoadState::Loaded(m) => replay::node_order(&m),
+        _ => Vec::new(),
+    });
+    let matching: Memo<HashSet<NodeId>> = Memo::new(move |_| match load_state.get() {
+        LoadState::Loaded(m) => {
+            let f = filter.get();
+            m.nodes
+                .iter()
+                .filter(|n| filter::node_matches(n, &m, &f))
+                .map(|n| n.id.clone())
+                .collect()
+        }
+        _ => HashSet::new(),
+    });
+    // The shared `#rstat` readout: replay form when a node is selected, else the
+    // filter form. Both modes show it, exactly as the reference does.
+    let rstat: Memo<String> = Memo::new(move |_| {
+        let order = node_order.get();
+        replay::rstat_text(&order, selected.get().as_ref(), matching.get().len())
+    });
+
+    // ── Replay runtime state (owned by App; shared with ReplayBar + keys) ─────
+    let replay_state = ReplayState::default();
+
+    // Tear the interval down on App unmount so it can't outlive the component.
+    on_cleanup(move || replay::stop_replay(replay_state));
+
+    // ── Document-level ←/→ key listener (wasm-only) ───────────────────────────
+    // Installs the reference arrow-key stepper with its INPUT/SELECT guard.
+    #[cfg(target_arch = "wasm32")]
+    replay::install_arrow_key_listener(node_order, selected, replay_state);
+
     view! {
         <header class="app-header">
             <div class="header-title">
@@ -79,8 +126,9 @@ pub fn App() -> impl IntoView {
             </div>
             // role="toolbar" gives AT users a named landmark for the filter controls.
             <div class="toolbar-area" role="toolbar" aria-label="Filters">
-                // Layout mode selector — first so the filter controls stay
-                // grouped on the right.
+                // Display + layout mode selectors — first so the filter controls
+                // stay grouped on the right.
+                <DisplayToggle display=display />
                 <LayoutToggle layout=layout />
                 // Extract the manifest for the Toolbar kind-options derive.
                 // When not loaded, pass None so the select is disabled.
@@ -93,12 +141,23 @@ pub fn App() -> impl IntoView {
                         <Toolbar filter=filter manifest=manifest />
                     }
                 }}
+                // Shared #rstat readout: step count / filtered count. Shown in
+                // both display modes, as the reference does.
+                <span class="count" id="rstat">{move || rstat.get()}</span>
             </div>
         </header>
         <main class=move || format!("app-main {}", layout.get().css_class())>
             // role="region" + aria-label lets screen-reader users jump between panes.
             <section id="map" class="panel panel-map" role="region" aria-label="Exploration graph">
-                <MapPane load_state=load_state selected=selected pan_zoom=pan_zoom filter=filter />
+                <MapPane
+                    load_state=load_state
+                    selected=selected
+                    pan_zoom=pan_zoom
+                    display=display
+                    matching=matching
+                    node_order=node_order
+                    replay_state=replay_state
+                />
             </section>
             <section id="detail" class="panel panel-detail" role="region" aria-label="Detail">
                 <DetailPane load_state=load_state selected=selected />
@@ -108,12 +167,21 @@ pub fn App() -> impl IntoView {
 }
 
 /// The map pane — renders one of four surfaces based on [`LoadState`].
+///
+/// When a manifest with nodes is loaded, renders the shared [`ReplayBar`] above
+/// the map surface, then switches on [`DisplayMode`]: `Graph` → the SVG
+/// [`GraphView`] (+ pan/zoom hint), `Tree` → the DOM [`TreeView`]. The
+/// `matching` Memo + `node_order` are owned by `App` and passed in (so the
+/// header `#rstat` and the map read one instance).
 #[component]
 pub fn MapPane(
     load_state: ReadSignal<LoadState>,
     selected: RwSignal<Option<NodeId>>,
     pan_zoom: RwSignal<PanZoom>,
-    filter: RwSignal<FilterState>,
+    display: RwSignal<DisplayMode>,
+    matching: Memo<HashSet<NodeId>>,
+    node_order: Memo<Vec<NodeId>>,
+    replay_state: ReplayState,
 ) -> impl IntoView {
     move || {
         let state = load_state.get();
@@ -147,31 +215,41 @@ pub fn MapPane(
                     _ => return view! { <p class="placeholder-text">"Loading…"</p> }.into_any(),
                 };
 
-                let view_params = LayoutView::default();
-                let renderer = SvgRenderer;
-                let scene = renderer.scene(&manifest, &view_params);
-
-                // Reactive matching set: ids of nodes passing the current filter.
-                // Stored as a Memo so it only recomputes when filter or manifest changes.
-                let matching: Memo<HashSet<NodeId>> = {
-                    let manifest_for_filter = manifest.clone();
-                    Memo::new(move |_| {
-                        let f = filter.get();
-                        manifest_for_filter
-                            .nodes
-                            .iter()
-                            .filter(|n| filter::node_matches(n, &manifest_for_filter, &f))
-                            .map(|n| n.id.clone())
-                            .collect::<HashSet<NodeId>>()
-                    })
+                // The map surface swaps reactively on `display`; the ReplayBar
+                // sits above it in both modes. The heavy scene/tree compute is
+                // done per-mode inside the reactive closure so only the active
+                // renderer's model is built.
+                let manifest_for_surface = manifest.clone();
+                let surface = move || match display.get() {
+                    DisplayMode::Graph => {
+                        let scene =
+                            SvgRenderer.scene(&manifest_for_surface, &LayoutView::default());
+                        view! {
+                            <GraphView
+                                scene=scene
+                                selected=selected
+                                pan_zoom=pan_zoom
+                                matching=matching
+                            />
+                            // Unobtrusive affordance so the pannable/zoomable
+                            // canvas is discoverable. aria-hidden: mouse-centric
+                            // guidance; keyboard users navigate via toolbar + Tab.
+                            <p class="map-hint" aria-hidden="true">"Scroll to zoom · drag to pan"</p>
+                        }
+                        .into_any()
+                    }
+                    DisplayMode::Tree => {
+                        let model = tree_model(&manifest_for_surface);
+                        view! {
+                            <TreeView model=model selected=selected matching=matching />
+                        }
+                        .into_any()
+                    }
                 };
 
                 view! {
-                    <GraphView scene=scene selected=selected pan_zoom=pan_zoom matching=matching />
-                    // Unobtrusive affordance so the pannable/zoomable canvas is
-                    // discoverable. aria-hidden: it's mouse-centric guidance;
-                    // keyboard users navigate via the toolbar + Tab.
-                    <p class="map-hint" aria-hidden="true">"Scroll to zoom · drag to pan"</p>
+                    <ReplayBar order=node_order selected=selected state=replay_state />
+                    {surface}
                 }
                 .into_any()
             }

@@ -14,7 +14,10 @@ pub struct KindMeta {
     /// `insight`). Fixed to `"other"` for `Other(_)` — never derived from the
     /// raw string.
     pub css_class: &'static str,
-    /// Single-character chip glyph.
+    /// Single-character chip glyph, matching the published `research-visualizer`
+    /// `GLYPH` map: `question 'Q'`, `experiment '✦'`, `decision '→'`,
+    /// `dead_end '✗'`, `insight '!'`, and `'•'` for any other kind. Glyphs may be
+    /// multi-byte Unicode scalars, which a Rust `char` holds fine.
     pub glyph: char,
     /// Lowercase display text. For `Other(raw)` this equals the raw string.
     pub badge: String,
@@ -33,27 +36,27 @@ pub fn kind_meta(kind: &NodeKind) -> KindMeta {
         },
         NodeKind::Experiment => KindMeta {
             css_class: "experiment",
-            glyph: 'E',
+            glyph: '✦',
             badge: "experiment".to_string(),
         },
         NodeKind::Decision => KindMeta {
             css_class: "decision",
-            glyph: 'D',
+            glyph: '→',
             badge: "decision".to_string(),
         },
         NodeKind::DeadEnd => KindMeta {
             css_class: "dead_end",
-            glyph: 'X',
+            glyph: '✗',
             badge: "dead end".to_string(),
         },
         NodeKind::Insight => KindMeta {
             css_class: "insight",
-            glyph: 'I',
+            glyph: '!',
             badge: "insight".to_string(),
         },
         NodeKind::Other(raw) => KindMeta {
             css_class: "other",
-            glyph: '?',
+            glyph: '•',
             badge: raw.clone(),
         },
     }
@@ -77,7 +80,7 @@ mod tests {
     fn experiment_mapping() {
         let m = kind_meta(&NodeKind::Experiment);
         assert_eq!(m.css_class, "experiment");
-        assert_eq!(m.glyph, 'E');
+        assert_eq!(m.glyph, '✦');
         assert_eq!(m.badge, "experiment");
     }
 
@@ -85,7 +88,7 @@ mod tests {
     fn decision_mapping() {
         let m = kind_meta(&NodeKind::Decision);
         assert_eq!(m.css_class, "decision");
-        assert_eq!(m.glyph, 'D');
+        assert_eq!(m.glyph, '→');
         assert_eq!(m.badge, "decision");
     }
 
@@ -93,7 +96,7 @@ mod tests {
     fn dead_end_mapping() {
         let m = kind_meta(&NodeKind::DeadEnd);
         assert_eq!(m.css_class, "dead_end");
-        assert_eq!(m.glyph, 'X');
+        assert_eq!(m.glyph, '✗');
         assert_eq!(m.badge, "dead end");
     }
 
@@ -101,7 +104,7 @@ mod tests {
     fn insight_mapping() {
         let m = kind_meta(&NodeKind::Insight);
         assert_eq!(m.css_class, "insight");
-        assert_eq!(m.glyph, 'I');
+        assert_eq!(m.glyph, '!');
         assert_eq!(m.badge, "insight");
     }
 
@@ -110,7 +113,7 @@ mod tests {
         let m = kind_meta(&NodeKind::Other("custom_thing".into()));
         // css_class is fixed — NEVER derived from raw
         assert_eq!(m.css_class, "other");
-        assert_eq!(m.glyph, '?');
+        assert_eq!(m.glyph, '•');
         // badge IS the raw string
         assert_eq!(m.badge, "custom_thing");
     }

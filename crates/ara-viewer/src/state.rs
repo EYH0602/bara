@@ -122,6 +122,49 @@ impl LayoutMode {
     }
 }
 
+// ── Display mode ──────────────────────────────────────────────────────────────
+
+/// Which renderer the `#map` pane uses for the exploration graph.
+///
+/// User-selectable via the header toolbar, alongside [`LayoutMode`]. A plain
+/// `Copy` enum so it can live in a Leptos signal and be unit-tested on native.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DisplayMode {
+    /// Today's interactive SVG DAG (pan/zoom). The default.
+    #[default]
+    Graph,
+    /// The published DOM indented tree-list.
+    Tree,
+}
+
+impl DisplayMode {
+    /// CSS modifier class for this mode. Unused by CSS today but kept for
+    /// symmetry with [`LayoutMode`] and future use.
+    pub fn css_class(self) -> &'static str {
+        match self {
+            DisplayMode::Graph => "display-graph",
+            DisplayMode::Tree => "display-tree",
+        }
+    }
+
+    /// Stable wire token (used as the toolbar button id and for round-tripping).
+    pub fn as_token(self) -> &'static str {
+        match self {
+            DisplayMode::Graph => "graph",
+            DisplayMode::Tree => "tree",
+        }
+    }
+
+    /// Parse a token back to a mode. Unknown input falls back to the default
+    /// (`Graph`) so a stale/garbage value can never wedge the display.
+    pub fn from_token(s: &str) -> Self {
+        match s {
+            "tree" => DisplayMode::Tree,
+            _ => DisplayMode::Graph,
+        }
+    }
+}
+
 // ── View state ────────────────────────────────────────────────────────────────
 
 /// Minimal pan/zoom state.  Steps 3b/5 will extend this; it is a plain value
@@ -317,6 +360,32 @@ mod tests {
     fn layout_mode_from_unknown_token_falls_back_to_stack() {
         assert_eq!(LayoutMode::from_token(""), LayoutMode::Stack);
         assert_eq!(LayoutMode::from_token("garbage"), LayoutMode::Stack);
+    }
+
+    // ── DisplayMode ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn display_mode_default_is_graph() {
+        assert_eq!(DisplayMode::default(), DisplayMode::Graph);
+    }
+
+    #[test]
+    fn display_mode_css_class_mapping() {
+        assert_eq!(DisplayMode::Graph.css_class(), "display-graph");
+        assert_eq!(DisplayMode::Tree.css_class(), "display-tree");
+    }
+
+    #[test]
+    fn display_mode_token_round_trip() {
+        for mode in [DisplayMode::Graph, DisplayMode::Tree] {
+            assert_eq!(DisplayMode::from_token(mode.as_token()), mode);
+        }
+    }
+
+    #[test]
+    fn display_mode_from_unknown_token_falls_back_to_graph() {
+        assert_eq!(DisplayMode::from_token(""), DisplayMode::Graph);
+        assert_eq!(DisplayMode::from_token("garbage"), DisplayMode::Graph);
     }
 
     // ── apply_manifest ────────────────────────────────────────────────────────
