@@ -14,7 +14,7 @@ All notable changes to this project are documented here. The format follows
   hierarchy, claims with status, graceful degradation), toolbar
   search/type/dead-end filters, full loading/empty/error states, and an enforced
   sub-MB wasm size gate — from a static manifest via a `ManifestSource` seam
-  (#TBD).
+  (#6).
 - Deterministic layered DAG **node** layout in `ara-core` via `dagre-dgl-rs`;
   positions + bounds added to `Manifest`; `ara layout <dir> --json` and
   `ara validate --layout`. Edge routing deferred to the client; geometry wire

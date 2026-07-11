@@ -283,17 +283,16 @@ pub fn GraphView(
                 });
             }
             on:pointerdown=move |ev: web_sys::PointerEvent| {
-                // Only start a drag when clicking the SVG background (not a node).
-                // We check the target element's class: if it contains "node" we
-                // skip starting the drag so that node clicks are not intercepted.
-                let target = ev.target();
-                let target_class = target
-                    .as_ref()
-                    .and_then(|t| t.dyn_ref::<web_sys::Element>())
-                    .map(|el| el.class_name())
-                    .unwrap_or_default();
-                let is_node = target_class.contains("node");
-                if !is_node {
+                // Only start a pan when the press lands on the SVG background, not
+                // on a node. A node's sub-elements (glyph chip, label, badge) do
+                // not all carry the `node` class, so walk the ancestor chain via
+                // closest(".node") instead of testing the target's own class.
+                let on_node = ev
+                    .target()
+                    .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                    .and_then(|el| el.closest(".node").ok().flatten())
+                    .is_some();
+                if !on_node {
                     let pz = pan_zoom.get();
                     drag_start.set(Some((
                         ev.client_x() as f64,
@@ -313,16 +312,28 @@ pub fn GraphView(
                 if let Some((start_cx, start_cy, pan_x0, pan_y0)) = drag_start.get() {
                     let dx_screen = ev.client_x() as f64 - start_cx;
                     let dy_screen = ev.client_y() as f64 - start_cy;
-                    // Convert screen delta to SVG-unit delta.
-                    // SVG units per pixel ≈ viewBox_width / svg_pixel_width.
-                    // We approximate using current zoom: 1 screen px ≈ 1/zoom SVG units
-                    // (exact when preserveAspectRatio fills the container, approximate otherwise).
                     let pz = pan_zoom.get();
-                    let svg_units_per_px = 1.0 / pz.zoom;
-                    // Panning right in screen space moves the viewBox origin left (negative pan).
+                    // Current viewBox dimensions (mirrors `viewbox` above).
+                    let vb_w = (bounds.width + pad * 2.0) / pz.zoom;
+                    let vb_h = (bounds.height + pad * 2.0) / pz.zoom;
+                    // preserveAspectRatio="…meet" scales BOTH axes by the same
+                    // factor s = min(clientW/vb_w, clientH/vb_h), so one screen
+                    // pixel maps to 1/s viewBox units on both axes. Read the
+                    // rendered SVG size from the handler's own element rather than
+                    // hardcoding a per-axis divisor (which panned y ~2-3× too slow).
+                    let units_per_px = ev
+                        .current_target()
+                        .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                        .map(|el| {
+                            let s = (el.client_width() as f64 / vb_w)
+                                .min(el.client_height() as f64 / vb_h);
+                            if s > 0.0 { 1.0 / s } else { 1.0 }
+                        })
+                        .unwrap_or(1.0);
+                    // Panning right in screen space moves the viewBox origin left.
                     pan_zoom.update(|pz| {
-                        pz.x = pan_x0 - dx_screen * svg_units_per_px * (bounds.width / 600.0);
-                        pz.y = pan_y0 - dy_screen * svg_units_per_px * (bounds.height / 400.0);
+                        pz.x = pan_x0 - dx_screen * units_per_px;
+                        pz.y = pan_y0 - dy_screen * units_per_px;
                     });
                 }
             }
