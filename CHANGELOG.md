@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-11
+
 ### Added
 - Viewer: selectable layout modes for the map/detail panes via a segmented
   toggle in the header — **Stack** (map on top at full width, detail below; the
