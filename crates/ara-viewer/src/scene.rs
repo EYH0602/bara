@@ -245,14 +245,19 @@ pub fn GraphView(
         .collect();
 
     // ── Reactive viewBox derived from pan_zoom ────────────────────────────────
+    // A layered exploration tree is typically wide and short, so a whole-graph
+    // fit is limited by width and leaves vertical slack. We pad the base viewBox
+    // for breathing room and top-align the SVG (below) so the graph reads as
+    // content anchored at the top rather than floating in the middle of the pane.
+    let pad = bounds.width.max(bounds.height) * 0.06;
     let viewbox = move || {
         let pz = pan_zoom.get();
         // zoom > 1 = zoomed in → divide viewBox dims by zoom (smaller viewport).
-        let vb_w = bounds.width / pz.zoom;
-        let vb_h = bounds.height / pz.zoom;
+        let vb_w = (bounds.width + pad * 2.0) / pz.zoom;
+        let vb_h = (bounds.height + pad * 2.0) / pz.zoom;
         // pan offsets shift the top-left origin.
-        let vb_x = bounds.x + pz.x;
-        let vb_y = bounds.y + pz.y;
+        let vb_x = bounds.x - pad + pz.x;
+        let vb_y = bounds.y - pad + pz.y;
         format!("{vb_x} {vb_y} {vb_w} {vb_h}")
     };
 
@@ -267,7 +272,7 @@ pub fn GraphView(
             class="graph-svg"
             viewBox=viewbox
             xmlns="http://www.w3.org/2000/svg"
-            preserveAspectRatio="xMidYMid meet"
+            preserveAspectRatio="xMidYMin meet"
             on:wheel=move |ev: web_sys::WheelEvent| {
                 ev.prevent_default();
                 let delta = ev.delta_y();
