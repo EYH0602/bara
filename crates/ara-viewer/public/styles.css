@@ -178,11 +178,12 @@ code, kbd, samp, pre,
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
-/* Active segment: warm selection fill + accent ink. */
+/* Active segment: warm selection fill + accent ink. Weight stays constant
+   across states — the fill + accent colour carry the active affordance, and a
+   bold-only-when-active label would change width and nudge the segments. */
 .layout-toggle-btn.is-active {
   background-color: var(--sel-bg);
   color: var(--accent);
-  font-weight: 600;
 }
 
 /* ── Main two-pane grid ─────────────────────────────────────────────────────── */
