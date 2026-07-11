@@ -8,6 +8,7 @@ pub mod canvas;
 pub mod detail;
 pub mod filter;
 pub mod kind;
+pub mod replay;
 pub mod scene;
 pub mod source;
 pub mod state;
