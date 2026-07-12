@@ -33,8 +33,9 @@ gloo-net = { version = "0.6", features = ["http", "websocket"] }
 wasm-bindgen-futures = "0.4"
 # StreamExt for draining the live-reload WebSocket.
 futures-util = { version = "0.3", default-features = false }
-# window().location() → absolute ws:// URL for the live socket.
-web-sys = { version = "0.3", features = ["Window", "Location"] }
+# document.baseURI + URL resolution → absolute ws:// URL for the live socket,
+# resolved relative to the page base so it works under the hub's `<base>` tag.
+web-sys = { version = "0.3", features = ["Window", "Document", "Node", "Url"] }
 
 # wasm-bindgen-test dev-deps: gated to wasm32 so `cargo test --workspace`
 # (native host build) skips them entirely.  The browser tests in

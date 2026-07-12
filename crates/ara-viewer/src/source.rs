@@ -36,13 +36,19 @@ pub enum ManifestSource {
 
 impl Default for ManifestSource {
     /// The default source is live-with-fallback: `ara serve` under
-    /// `/api/manifest` + `/api/live`, falling back to the static
+    /// `api/manifest` + `api/live`, falling back to the static
     /// `manifest.json` that Trunk copies into `dist/`.
+    ///
+    /// All three URLs are **relative** so they resolve against the document
+    /// base (`document.baseURI`). Under local `ara serve` the page is at `/`,
+    /// so `api/manifest` → `/api/manifest` (unchanged behaviour). Under the hub
+    /// the served `index.html` carries `<base href="/a/{id}/">`, so the same
+    /// relative URL → `/a/{id}/api/manifest`. See `plans`/`docs` D1.
     fn default() -> Self {
         Self::Api {
-            manifest_url: "/api/manifest".into(),
+            manifest_url: "api/manifest".into(),
             fallback_url: "manifest.json".into(),
-            live_url: "/api/live".into(),
+            live_url: "api/live".into(),
         }
     }
 }
@@ -148,18 +154,41 @@ pub fn connect_live(source: ManifestSource, set_state: impl Fn(LoadState) + Clon
     });
 }
 
-/// Resolve a same-origin path (e.g. `/api/live`) to an absolute `ws://` /
-/// `wss://` URL using the page location. Returns `None` if the location is
+/// Resolve a relative path (e.g. `api/live`) to an absolute `ws://` / `wss://`
+/// URL against the document base. Returns `None` if the document base is
 /// unavailable (non-browser context).
+///
+/// Reads `document.baseURI`, which reflects any `<base>` tag: under local
+/// `ara serve` the base is the origin root, so `api/live` → `ws://host/api/live`;
+/// under the hub the served page carries `<base href="/a/{id}/">`, so the same
+/// relative path → `ws://host/a/{id}/api/live`. The pure resolution + scheme
+/// swap lives in [`ws_url_from_base`] so it is testable with a synthetic base.
 #[cfg(target_arch = "wasm32")]
 fn absolute_ws_url(path: &str) -> Option<String> {
-    let location = web_sys::window()?.location();
-    let host = location.host().ok()?;
-    let scheme = match location.protocol().ok()?.as_str() {
+    let base = web_sys::window()?.document()?.base_uri().ok()??;
+    ws_url_from_base(&base, path)
+}
+
+/// Resolve `path` against `base` and convert the resulting `http(s)` URL to a
+/// `ws://` / `wss://` URL. Split out of [`absolute_ws_url`] so the load-bearing
+/// D1 resolution (relative path + `<base>`) is unit-testable with a synthetic
+/// base rather than the live `document.baseURI`.
+///
+/// `https:` maps to `wss`, anything else (`http:`, `file:`) to `ws`. The `host`
+/// component already carries the port when present (e.g. `localhost:8080`).
+#[cfg(target_arch = "wasm32")]
+pub fn ws_url_from_base(base: &str, path: &str) -> Option<String> {
+    let resolved = web_sys::Url::new_with_base(path, base).ok()?;
+    let scheme = match resolved.protocol().as_str() {
         "https:" => "wss",
         _ => "ws",
     };
-    Some(format!("{scheme}://{host}{path}"))
+    Some(format!(
+        "{scheme}://{}{}{}",
+        resolved.host(),
+        resolved.pathname(),
+        resolved.search()
+    ))
 }
 
 /// Native stub — the viewer never runs natively; the stub keeps `cargo test`
@@ -173,4 +202,35 @@ pub fn fetch_manifest(_source: ManifestSource, _set_state: impl Fn(LoadState) + 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn connect_live(_source: ManifestSource, _set_state: impl Fn(LoadState) + Clone + 'static) {
     // No-op on native: WebSocket live reload is browser-only.
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Wire-contract guard: the default source must use **relative** URLs so
+    /// they resolve against `document.baseURI` (D1). An accidental leading `/`
+    /// would re-hardcode absolute paths and break hub sub-path serving; the
+    /// browser test in `tests/web.rs` proves the resolution end-to-end.
+    #[test]
+    fn default_source_urls_are_relative() {
+        match ManifestSource::default() {
+            ManifestSource::Api {
+                manifest_url,
+                fallback_url,
+                live_url,
+            } => {
+                assert_eq!(manifest_url, "api/manifest");
+                assert_eq!(fallback_url, "manifest.json");
+                assert_eq!(live_url, "api/live");
+                for url in [&manifest_url, &fallback_url, &live_url] {
+                    assert!(
+                        !url.starts_with('/'),
+                        "default URL {url:?} must be relative (no leading '/')"
+                    );
+                }
+            }
+            ManifestSource::Static(_) => panic!("default must be the Api variant"),
+        }
+    }
 }

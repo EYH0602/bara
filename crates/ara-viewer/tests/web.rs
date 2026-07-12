@@ -23,6 +23,7 @@ use ara_viewer::{
     detail::DetailPane,
     replay::{ReplayBar, ReplayState, install_arrow_key_listener, node_order},
     scene::{GraphRenderer, GraphView, LayoutView, SvgRenderer},
+    source::ws_url_from_base,
     state::{DisplayMode, LayoutMode, LoadState, PanZoom, parse_manifest},
     toolbar::{DisplayToggle, LayoutToggle},
     tree::{TreeView, tree_model},
@@ -120,6 +121,40 @@ fn body_div(doc: &Document) -> HtmlElement {
     let div = doc.create_element("div").unwrap();
     doc.body().unwrap().append_child(&div).unwrap();
     div.unchecked_into::<HtmlElement>()
+}
+
+// ── Test: live-socket URL resolves relative to the document base (D1) ─────────
+//
+// The load-bearing hub assumption: the viewer's relative `api/live` must resolve
+// against the page base. This test drives `ws_url_from_base` with a synthetic
+// base for BOTH the local-serve root (`/`) and the hub sub-path (`/a/{id}/`), so
+// a regression in the relative resolution or the http→ws scheme swap is caught
+// without a live server. A silent break here would make local live-reload fail
+// invisibly (the socket error is intentionally swallowed as "static host").
+
+#[wasm_bindgen_test]
+fn ws_url_resolves_relative_to_document_base() {
+    // Local serve: page at origin root → api/live is same as an absolute
+    // /api/live. http base → ws scheme.
+    assert_eq!(
+        ws_url_from_base("http://localhost:8080/", "api/live").as_deref(),
+        Some("ws://localhost:8080/api/live"),
+        "root base must resolve api/live to /api/live (local serve unchanged)"
+    );
+
+    // Hub: page at /a/{id}/ → api/live resolves under that sub-path.
+    assert_eq!(
+        ws_url_from_base("http://example.com/a/resnet/", "api/live").as_deref(),
+        Some("ws://example.com/a/resnet/api/live"),
+        "sub-path base must resolve api/live under /a/{{id}}/ (hub)"
+    );
+
+    // https base → wss scheme, sub-path preserved.
+    assert_eq!(
+        ws_url_from_base("https://example.com/a/resnet/", "api/live").as_deref(),
+        Some("wss://example.com/a/resnet/api/live"),
+        "https base must swap to wss and keep the sub-path"
+    );
 }
 
 // ── Test: node count equals nodes-with-pos count ──────────────────────────────
