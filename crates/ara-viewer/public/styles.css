@@ -527,7 +527,7 @@ code, kbd, samp, pre,
 .tree-map .node.dead .ntitle {
   color: var(--warn);
   text-decoration: line-through;
-  text-decoration-color: rgba(162, 59, 45, 0.4);
+  text-decoration-color: color-mix(in srgb, var(--warn) 40%, transparent);
 }
 
 /* Child container — a sibling of the row, indented with a spine. */
