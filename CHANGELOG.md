@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `ara serve --hub --ara-root <dir>`: read-only multi-ARA mode. Scans the root
+  once at startup, parses each child directory into a per-ARA parse-once cache,
+  and serves them under path-based `/a/{id}/` routing (`/a/{id}/api/manifest`
+  with ETag/304, `/a/{id}/` viewer index, a root index of available ARAs). Hub
+  reads are pure cache hits — no watcher, no reparse after startup. Ids are
+  constrained to `[A-Za-z0-9._-]+`; broken ARAs and bad ids are logged and
+  skipped, an unreadable root is fatal, and an empty root warns loudly. (#17)
+- `--host <ip>` flag for `ara serve` (default `127.0.0.1`; set `0.0.0.0` in a
+  container so the port is reachable from the host). (#17)
+- Multi-stage musl → distroless `Dockerfile` for the hub (viewer baked into the
+  binary; no wasm toolchain in the image; `cargo-chef` dependency-layer cache)
+  plus `.dockerignore`, a CI `docker` smoke-test job, and `docs/deploy.md`
+  (Docker/compose, systemd, Caddy/nginx reverse-proxy compression, ops notes). (#17)
+
+### Changed
+- Viewer: resolves its manifest/live URLs **relative** to the page
+  (`api/manifest`, `api/live`) instead of absolute paths, so the same bundle
+  serves both local `ara serve` (page at `/`, unchanged behaviour) and the hub
+  (per-ARA `<base href="/a/{id}/">`). (#17)
+
 ## [0.1.2] - 2026-07-11
 
 ### Added

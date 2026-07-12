@@ -157,6 +157,43 @@ fn ws_url_resolves_relative_to_document_base() {
     );
 }
 
+// ── Test: relative fetch resolves under <base href> in a real browser (D1) ────
+//
+// The ONE test that proves D1's load-bearing assumption in an actual browser:
+// with `<base href="/a/x/">` in the document head, a relative `api/manifest`
+// (the viewer's default manifest URL) must resolve to `/a/x/api/manifest`. The
+// native string test and the ws_url_from_base test cover the logic; only this
+// exercises the browser's real `<base>` + URL resolution the viewer relies on.
+
+#[wasm_bindgen_test]
+fn base_href_makes_relative_fetch_resolve_under_subpath() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+
+    // Inject <base href="/a/x/"> into the document head, as the hub does.
+    let head = doc.head().expect("document must have a <head>");
+    let base = doc.create_element("base").unwrap();
+    base.set_attribute("href", "/a/x/").unwrap();
+    head.append_child(&base).unwrap();
+
+    // The viewer's default manifest URL is the relative "api/manifest".
+    let manifest_url = match ara_viewer::source::ManifestSource::default() {
+        ara_viewer::source::ManifestSource::Api { manifest_url, .. } => manifest_url,
+        _ => panic!("default must be the Api variant"),
+    };
+
+    // Resolve it exactly as the browser's fetch would: against document.baseURI.
+    let base_uri = doc.base_uri().unwrap().expect("baseURI present");
+    let resolved = web_sys::Url::new_with_base(&manifest_url, &base_uri).unwrap();
+    assert_eq!(
+        resolved.pathname(),
+        "/a/x/api/manifest",
+        "relative api/manifest must resolve under the injected <base href>"
+    );
+
+    // Clean up so the base tag doesn't leak into sibling tests.
+    head.remove_child(&base).unwrap();
+}
+
 // ── Test: node count equals nodes-with-pos count ──────────────────────────────
 
 /// Mounts GraphView with the fixture manifest and asserts that the number of
