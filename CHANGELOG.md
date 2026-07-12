@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- CLI: set `default-run = "ara"` on the `ara-cli` package so a bare
+  `cargo run -- <args>` resolves to the `ara` binary instead of erroring on the
+  ambiguous `ara` / `ara-viewer` binary choice. (#16)
+
 ## [0.1.2] - 2026-07-11
 
 ### Added
