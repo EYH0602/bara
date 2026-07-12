@@ -456,6 +456,12 @@ code, kbd, samp, pre,
   background: var(--panel2);
 }
 
+/* Keyboard focus ring — matches the graph-mode node focus style. */
+.tree-map .node:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* Selected row: warm fill + accent border (reference `.sel`). */
 .tree-map .node.sel {
   background: var(--sel-bg);
