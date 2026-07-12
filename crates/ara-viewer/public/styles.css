@@ -292,6 +292,10 @@ code, kbd, samp, pre,
   100% { background-position: -200% 0; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
 /* ── Error card ─────────────────────────────────────────────────────────────── */
 
 .error-card {
