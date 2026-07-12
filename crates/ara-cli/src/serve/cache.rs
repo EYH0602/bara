@@ -97,7 +97,10 @@ mod tests {
     fn builds_cache_from_resnet_fixture() {
         let cache =
             CachedAra::from_dir(&fixture("resnet-ara-example")).expect("resnet fixture must parse");
-        let manifest = cache.manifest.as_ref().expect("from_dir keeps the manifest");
+        let manifest = cache
+            .manifest
+            .as_ref()
+            .expect("from_dir keeps the manifest");
         assert!(!manifest.nodes.is_empty());
         assert!(!cache.manifest_json.is_empty());
         assert!(cache.etag.starts_with('"') && cache.etag.ends_with('"'));
@@ -109,7 +112,10 @@ mod tests {
         let cache = CachedAra::from_dir_lean(&fixture("resnet-ara-example"))
             .expect("resnet fixture must parse");
         // The hub path drops the parsed graph to save memory …
-        assert!(cache.manifest.is_none(), "lean build must drop the manifest");
+        assert!(
+            cache.manifest.is_none(),
+            "lean build must drop the manifest"
+        );
         // … but the serialized body + etag + figures dir are identical to a
         // full build, so serving is unaffected.
         assert!(!cache.manifest_json.is_empty());

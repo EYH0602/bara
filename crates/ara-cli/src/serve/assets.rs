@@ -58,6 +58,31 @@ pub async fn embedded_handler(uri: Uri) -> Response {
     }
 }
 
+/// The embedded `index.html` source, or `None` if the viewer wasn't embedded.
+///
+/// The hub injects a per-ARA `<base>` tag into this before serving it, so it
+/// needs the raw template rather than a ready-made response.
+pub fn embedded_index_html() -> Option<&'static str> {
+    VIEWER
+        .get_file("index.html")
+        .and_then(|f| std::str::from_utf8(f.contents()).ok())
+}
+
+/// Serve a shared embedded asset by exact path — **no** `index.html` fallback.
+///
+/// Returns `404` for an unknown path rather than the SPA index: the hub has no
+/// client-side router at root, and a base-less viewer index would fetch
+/// `/api/manifest` (no such hub route) and show a load error. Root-absolute
+/// Trunk bundle URLs (`/ara-viewer-{hash}.js`) do resolve here — that is how
+/// per-ARA pages load the shared immutable bundle.
+pub fn embedded_asset_strict(uri: &Uri) -> Response {
+    let path = uri.path().trim_start_matches('/');
+    match VIEWER.get_file(path) {
+        Some(file) => file_response(path, file.contents()),
+        None => (StatusCode::NOT_FOUND, "not found").into_response(),
+    }
+}
+
 /// Build a response for an embedded file: correct MIME + cache policy.
 ///
 /// Hashed bundles (Trunk fingerprints js/css/wasm) are safe to cache forever;

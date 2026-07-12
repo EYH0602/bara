@@ -7,11 +7,6 @@
 //! after startup. A hot upload/ingest API (which would reintroduce `RwLock` /
 //! `ArcSwap`) is explicitly out of scope; adding ARAs means a restart.
 
-// Wired into the router + `run` in the hub-routing step; until then the ingest
-// API has no caller, so the dead-code lint would fire. Removed once
-// `build_hub_router` consumes it.
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -128,6 +123,48 @@ pub fn ingest(root: &Path) -> std::io::Result<Ingest> {
         aras: Arc::new(aras),
         skipped,
     })
+}
+
+/// Inject `<base href="/a/{id}/">` immediately after `<head>` in `html`.
+///
+/// Returns `None` if `<head>` is absent (e.g. a future Trunk reformats the
+/// template) — the caller must turn that into an error, never serve a base-less
+/// page: without the base every relative API URL would break and the viewer
+/// would render nothing. `id` is already constrained to `[A-Za-z0-9._-]+` at
+/// ingest, so it is safe to interpolate into the `href` attribute unescaped.
+pub fn inject_base_href(html: &str, id: &str) -> Option<String> {
+    const HEAD: &str = "<head>";
+    let head_end = html.find(HEAD)? + HEAD.len();
+    let tag = format!("\n    <base href=\"/a/{id}/\">");
+    let mut out = String::with_capacity(html.len() + tag.len());
+    out.push_str(&html[..head_end]);
+    out.push_str(&tag);
+    out.push_str(&html[head_end..]);
+    Some(out)
+}
+
+/// Render the hub root index: a minimal HTML listing linking to each ARA.
+///
+/// Ids are charset-constrained at ingest, so they are safe to interpolate into
+/// both the `href` and the link text without escaping.
+pub fn render_hub_index(aras: &Aras) -> String {
+    let mut ids: Vec<&str> = aras.keys().map(String::as_str).collect();
+    ids.sort_unstable();
+
+    let body = if ids.is_empty() {
+        "<p>No ARAs available.</p>".to_string()
+    } else {
+        let items: String = ids
+            .iter()
+            .map(|id| format!("<li><a href=\"/a/{id}/\">{id}</a></li>"))
+            .collect();
+        format!("<ul>{items}</ul>")
+    };
+
+    format!(
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n\
+         <title>ARA Hub</title>\n</head>\n<body>\n<h1>ARA Hub</h1>\n{body}\n</body>\n</html>\n"
+    )
 }
 
 /// Insert `cached` under `name`, or record a skip if `name` is already present.
@@ -251,7 +288,54 @@ mod tests {
     fn nonexistent_root_is_err() {
         let root = tempdir().unwrap();
         let missing = root.path().join("does-not-exist");
-        assert!(ingest(&missing).is_err(), "missing root must be fatal (Err)");
+        assert!(
+            ingest(&missing).is_err(),
+            "missing root must be fatal (Err)"
+        );
+    }
+
+    #[test]
+    fn inject_base_href_inserts_after_head() {
+        let html = "<!DOCTYPE html><html><head><title>x</title></head><body></body></html>";
+        let out = inject_base_href(html, "resnet").expect("<head> present");
+        assert!(out.contains(r#"<base href="/a/resnet/">"#));
+        // The base tag must sit right after <head>, before <title>.
+        let base_at = out.find("<base").unwrap();
+        let title_at = out.find("<title>").unwrap();
+        assert!(
+            base_at < title_at,
+            "base must precede existing head content"
+        );
+    }
+
+    #[test]
+    fn inject_base_href_none_without_head() {
+        // A template with no <head> must yield None so the handler errors rather
+        // than serving a base-less page (every relative API URL would break).
+        assert!(inject_base_href("<html><body></body></html>", "x").is_none());
+    }
+
+    #[test]
+    fn render_hub_index_lists_ids_sorted() {
+        let mut map: HashMap<String, Arc<CachedAra>> = HashMap::new();
+        for id in ["beta", "alpha"] {
+            map.insert(
+                id.into(),
+                Arc::new(CachedAra::from_dir_lean(&fixture("minimal-artifact")).unwrap()),
+            );
+        }
+        let html = render_hub_index(&Arc::new(map));
+        assert!(html.contains(r#"<a href="/a/alpha/">alpha</a>"#));
+        assert!(html.contains(r#"<a href="/a/beta/">beta</a>"#));
+        // Sorted: alpha before beta.
+        assert!(html.find("alpha").unwrap() < html.find("beta").unwrap());
+    }
+
+    #[test]
+    fn render_hub_index_empty_says_none() {
+        let empty: Aras = Arc::new(HashMap::new());
+        let html = render_hub_index(&empty);
+        assert!(html.contains("No ARAs available"));
     }
 
     #[test]
@@ -287,6 +371,9 @@ mod tests {
 
         let ingest = ingest(root.path()).expect("readable root");
         assert_eq!(ingest.aras.len(), 1);
-        assert!(ingest.skipped.is_empty(), "a loose file is not a skipped ARA");
+        assert!(
+            ingest.skipped.is_empty(),
+            "a loose file is not a skipped ARA"
+        );
     }
 }
