@@ -31,11 +31,15 @@ RUN cargo install cargo-chef --locked \
     && apt-get update \
     && apt-get install -y --no-install-recommends musl-tools \
     && rm -rf /var/lib/apt/lists/*
-# Point the musl target's linker + C compiler at musl-gcc so any `*-sys` build
-# script (which shells out to `cc`) doesn't fall back to host gcc and pass
-# `-m64`, which musl-gcc rejects.
+# Point the musl target's C compiler at musl-gcc so any `*-sys` build script
+# (which shells out to `cc`) doesn't fall back to host gcc and pass `-m64`, which
+# musl-gcc rejects. Do NOT override the *linker* to musl-gcc: musl-gcc links
+# dynamically by default (against /lib/ld-musl-*.so.1, absent from distroless),
+# yielding an `exec /ara: no such file or directory`. rustc's musl target links
+# fully static via its self-contained startup objects, so leave the linker
+# alone and pin +crt-static to be explicit.
 ENV CC_x86_64_unknown_linux_musl=musl-gcc \
-    CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+    RUSTFLAGS="-C target-feature=+crt-static"
 
 # ── Plan: capture the dependency graph for caching ───────────────────────────
 FROM chef AS planner
