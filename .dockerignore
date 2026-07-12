@@ -1,0 +1,12 @@
+# Keep the build context small + the dependency-cache layer stable.
+# `target/` is the big one (multi-GB local builds); the corpus + docs never
+# affect the binary.
+target/
+corpus-external/
+.git/
+.github/
+plans/
+docs/
+*.log
+# The committed viewer bundle under crates/ara-cli/assets/viewer/ IS needed
+# (include_dir! bakes it in), so it is deliberately NOT ignored.

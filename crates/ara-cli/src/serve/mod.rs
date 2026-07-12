@@ -7,6 +7,7 @@
 
 mod assets;
 mod cache;
+mod hub;
 mod watch;
 
 use std::path::{Path, PathBuf};
@@ -15,29 +16,54 @@ use std::sync::Arc;
 
 use arc_swap::ArcSwap;
 use axum::Router;
-use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::extract::{Path as AxumPath, State};
+use axum::http::{HeaderMap, StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use tokio::sync::{broadcast, mpsc};
 use tower_http::services::{ServeDir, ServeFile};
 
-use assets::{Assets, embedded_handler, embedded_is_populated};
+use assets::{
+    Assets, embedded_asset_strict, embedded_handler, embedded_index_html, embedded_is_populated,
+};
 use cache::CachedAra;
+use hub::Aras;
 
 /// `ara serve` command-line arguments.
+///
+/// Two mutually-exclusive modes, enforced by clap at parse time via the `mode`
+/// [`ArgGroup`] so a bad combination fails with a clear message instead of a
+/// hand-rolled runtime check:
+/// - **local** (default): a positional `dir` → single-ARA watch + live reload.
+/// - **hub**: `--hub --ara-root <dir>` → read-only multi-ARA under `/a/{id}/`.
 #[derive(clap::Args)]
+#[command(group(
+    clap::ArgGroup::new("mode")
+        .required(true)
+        .args(["dir", "hub"])
+))]
 pub struct ServeArgs {
-    /// Path to the ARA artifact directory (containing `trace/` and `logic/`).
-    dir: PathBuf,
-    /// Port to bind on `127.0.0.1`.
+    /// Path to a single ARA artifact directory (local mode; conflicts with `--hub`).
+    #[arg(conflicts_with = "hub")]
+    dir: Option<PathBuf>,
+    /// Serve many ARAs read-only from `--ara-root` under `/a/{id}/` (hub mode).
+    #[arg(long, requires = "ara_root")]
+    hub: bool,
+    /// Root directory whose immediate subdirectories are each an ARA (hub mode).
+    #[arg(long)]
+    ara_root: Option<PathBuf>,
+    /// Port to bind on.
     #[arg(long, default_value_t = 8080)]
     port: u16,
+    /// Bind address. Defaults to loopback for local safety; set `0.0.0.0` in a
+    /// container so the port is reachable from the host.
+    #[arg(long, default_value = "127.0.0.1")]
+    host: std::net::IpAddr,
     /// Serve viewer assets from this on-disk `dist/` instead of the embedded copy.
     #[arg(long)]
     assets: Option<PathBuf>,
-    /// Use the polling watcher (for network mounts / bind mounts).
+    /// Use the polling watcher (local mode only; hub has no watcher).
     #[arg(long)]
     poll: bool,
 }
@@ -49,25 +75,9 @@ pub struct AppState {
     live_tx: broadcast::Sender<String>,
 }
 
-/// Entry point for `ara serve`. Builds the initial cache, then runs the server
-/// on a fresh multi-thread Tokio runtime until Ctrl-C.
+/// Entry point for `ara serve`. Branches on mode, builds the cache(s), then runs
+/// the server on a fresh multi-thread Tokio runtime until Ctrl-C.
 pub fn run(args: ServeArgs) -> ExitCode {
-    // Parse once up front so a broken artifact fails fast with diagnostics.
-    let initial = match CachedAra::from_dir(&args.dir) {
-        Ok(c) => c,
-        Err(report) => {
-            for diagnostic in report.errors() {
-                eprintln!("{diagnostic}");
-            }
-            eprintln!(
-                "{}: cannot serve — {} parse error(s)",
-                args.dir.display(),
-                report.errors().len()
-            );
-            return ExitCode::FAILURE;
-        }
-    };
-
     if args.assets.is_none() && !embedded_is_populated() {
         eprintln!(
             "warning: no viewer assets are embedded in this binary; pass --assets <dist> \
@@ -75,6 +85,86 @@ pub fn run(args: ServeArgs) -> ExitCode {
         );
     }
 
+    // Clap's `mode` ArgGroup guarantees exactly one of `--hub` / positional
+    // `dir` is set, so these branches are exhaustive.
+    if args.hub {
+        run_hub(args)
+    } else {
+        run_local(args)
+    }
+}
+
+/// Local mode: parse one ARA up front (fail fast on a broken artifact), then
+/// serve with the file-watch live-reload path.
+fn run_local(args: ServeArgs) -> ExitCode {
+    let dir = args
+        .dir
+        .clone()
+        .expect("clap ArgGroup guarantees `dir` in local mode");
+    let initial = match CachedAra::from_dir(&dir) {
+        Ok(c) => c,
+        Err(report) => {
+            for diagnostic in report.errors() {
+                eprintln!("{diagnostic}");
+            }
+            eprintln!(
+                "{}: cannot serve — {} parse error(s)",
+                dir.display(),
+                report.errors().len()
+            );
+            return ExitCode::FAILURE;
+        }
+    };
+
+    with_runtime(|| serve_local(args, dir, initial))
+}
+
+/// Hub mode: ingest `--ara-root` once at startup, then serve read-only.
+fn run_hub(args: ServeArgs) -> ExitCode {
+    let root = args
+        .ara_root
+        .clone()
+        .expect("clap `requires` guarantees --ara-root with --hub");
+
+    // An unreadable root is a fatal misconfiguration → non-zero exit, matching
+    // local mode's fast-fail on a broken artifact.
+    let ingested = match hub::ingest(&root) {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("error: cannot read --ara-root {}: {e}", root.display());
+            return ExitCode::FAILURE;
+        }
+    };
+
+    for skip in &ingested.skipped {
+        eprintln!("skipped ARA {:?}: {}", skip.name, skip.reason);
+    }
+    let n = ingested.aras.len();
+    let m = ingested.skipped.len();
+    // A silently-empty hub behind a load balancer reads as "up" while serving
+    // nothing — make that an unmissable ops signal.
+    if n == 0 {
+        eprintln!(
+            "WARNING: hub ingested 0 ARAs from {} ({m} skipped) — the hub will serve nothing",
+            root.display()
+        );
+    } else {
+        println!(
+            "hub: {n} ARA(s) ingested, {m} skipped from {}",
+            root.display()
+        );
+    }
+
+    with_runtime(|| serve_hub(args, ingested.aras))
+}
+
+/// Build a multi-thread Tokio runtime and drive `fut` to completion, mapping the
+/// server result to an exit code. Shared by both modes.
+fn with_runtime<F, Fut>(make_fut: F) -> ExitCode
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<(), Box<dyn std::error::Error>>>,
+{
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -86,7 +176,7 @@ pub fn run(args: ServeArgs) -> ExitCode {
         }
     };
 
-    match runtime.block_on(serve(args, initial)) {
+    match runtime.block_on(make_fut()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");
@@ -95,8 +185,12 @@ pub fn run(args: ServeArgs) -> ExitCode {
     }
 }
 
-/// Wire the router, spawn the watcher, and serve until shutdown.
-async fn serve(args: ServeArgs, initial: CachedAra) -> Result<(), Box<dyn std::error::Error>> {
+/// Wire the local router, spawn the watcher, and serve until shutdown.
+async fn serve_local(
+    args: ServeArgs,
+    dir: PathBuf,
+    initial: CachedAra,
+) -> Result<(), Box<dyn std::error::Error>> {
     let figures_dir = initial.figures_dir.clone();
     let cache = Arc::new(ArcSwap::from_pointee(initial));
     let (live_tx, _) = broadcast::channel::<String>(16);
@@ -105,29 +199,45 @@ async fn serve(args: ServeArgs, initial: CachedAra) -> Result<(), Box<dyn std::e
         live_tx: live_tx.clone(),
     };
 
-    let assets = match args.assets {
-        Some(dir) => Assets::Dir(dir),
+    let assets = match &args.assets {
+        Some(dir) => Assets::Dir(dir.clone()),
         None => Assets::Embedded,
     };
     let app = build_router(state.clone(), assets, figures_dir);
 
     // File watcher → debounced reparse → cache swap → broadcast new ETag.
     let (watch_tx, mut watch_rx) = mpsc::unbounded_channel();
-    watch::spawn(&args.dir, args.poll, watch_tx)?;
+    watch::spawn(&dir, args.poll, watch_tx)?;
     let reparse_state = state.clone();
-    let watch_dir = args.dir.clone();
+    let watch_dir = dir.clone();
     tokio::spawn(async move {
         while watch_rx.recv().await.is_some() {
             reparse_and_swap(&reparse_state, &watch_dir);
         }
     });
 
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], args.port));
+    let addr = std::net::SocketAddr::new(args.host, args.port);
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!(
-        "ara serve: http://{addr}  (watching {})",
-        args.dir.display()
-    );
+    println!("ara serve: http://{addr}  (watching {})", dir.display());
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+    Ok(())
+}
+
+/// Wire the hub router and serve read-only until shutdown. No watcher: the hub
+/// parses once at ingest and never reparses.
+async fn serve_hub(args: ServeArgs, aras: Aras) -> Result<(), Box<dyn std::error::Error>> {
+    let assets = match &args.assets {
+        Some(dir) => Assets::Dir(dir.clone()),
+        None => Assets::Embedded,
+    };
+    let app = build_hub_router(aras, assets);
+
+    let addr = std::net::SocketAddr::new(args.host, args.port);
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    println!("ara serve --hub: http://{addr}");
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
@@ -158,10 +268,170 @@ pub fn build_router(state: AppState, assets: Assets, figures_dir: PathBuf) -> Ro
     router.with_state(state)
 }
 
-/// `GET /api/manifest` — cached JSON with a strong `ETag`; `304` on match.
-async fn manifest(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    let cached = state.cache.load();
+/// Shared state for the hub router: the immutable ARA table + how to serve the
+/// shared viewer assets (embedded or on-disk `dist/`).
+#[derive(Clone)]
+struct HubState {
+    aras: Aras,
+    assets: Assets,
+}
 
+/// Build the hub route table. Split out so tests can drive it via `oneshot`.
+///
+/// ```text
+/// GET /a/{id}              308 -> /a/{id}/ if id known; else 404
+/// GET /a/{id}/             index.html with <base href="/a/{id}/"> injected
+/// GET /a/{id}/api/manifest cached manifest (ETag/304); 404 if id unknown
+/// GET /                    minimal HTML index of available ARA ids
+/// GET /{*asset}            shared js/wasm/css if the file exists; else 404
+/// ```
+///
+/// There is no `/api/live` and no watcher — live reload is local-only; the
+/// viewer's live socket simply never opens on the hub (it degrades to inert).
+pub fn build_hub_router(aras: Aras, assets: Assets) -> Router {
+    let state = HubState { aras, assets };
+    Router::new()
+        .route("/", get(hub_index))
+        .route("/a/{id}", get(hub_ara_redirect))
+        .route("/a/{id}/", get(hub_ara_index))
+        .route("/a/{id}/api/manifest", get(hub_manifest))
+        // Any other root path is a shared asset lookup (or 404) — NOT an SPA
+        // fallback. Placed last so the specific routes above win.
+        .fallback(get(hub_asset))
+        .with_state(state)
+}
+
+/// `GET /` — a minimal listing of available ARA ids.
+async fn hub_index(State(state): State<HubState>) -> Response {
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        hub::render_hub_index(&state.aras),
+    )
+        .into_response()
+}
+
+/// `GET /a/{id}` (no trailing slash) — `308` to `/a/{id}/` if the id is known,
+/// else `404`. A 308 (not 301) is not permanently browser-cached, and gating on
+/// a known id means we never cache a redirect that lands on a 404.
+async fn hub_ara_redirect(
+    State(state): State<HubState>,
+    AxumPath(id): AxumPath<String>,
+) -> Response {
+    if state.aras.contains_key(&id) {
+        (
+            StatusCode::PERMANENT_REDIRECT,
+            [(header::LOCATION, format!("/a/{id}/"))],
+        )
+            .into_response()
+    } else {
+        (StatusCode::NOT_FOUND, "unknown ARA").into_response()
+    }
+}
+
+/// `GET /a/{id}/` — the viewer index with a per-ARA `<base href="/a/{id}/">`
+/// injected, `no-cache`. Unknown id → 404. A template with no `<head>` to
+/// splice into → 500 (never a silent base-less page, which would break every
+/// relative API URL and render nothing).
+async fn hub_ara_index(State(state): State<HubState>, AxumPath(id): AxumPath<String>) -> Response {
+    if !state.aras.contains_key(&id) {
+        return (StatusCode::NOT_FOUND, "unknown ARA").into_response();
+    }
+
+    let template = match hub_index_template(&state.assets) {
+        Some(t) => t,
+        None => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "viewer index.html is not available",
+            )
+                .into_response();
+        }
+    };
+
+    match hub::inject_base_href(&template, &id) {
+        Some(html) => (
+            [
+                (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                (header::CACHE_CONTROL, "no-cache"),
+            ],
+            html,
+        )
+            .into_response(),
+        None => {
+            eprintln!("error: viewer index.html has no <head> to inject <base> into");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "viewer index.html has no <head> to inject a base href into",
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Read the raw `index.html` template for either asset source.
+fn hub_index_template(assets: &Assets) -> Option<String> {
+    match assets {
+        Assets::Embedded => embedded_index_html().map(str::to_owned),
+        Assets::Dir(dir) => std::fs::read_to_string(dir.join("index.html")).ok(),
+    }
+}
+
+/// `GET /a/{id}/api/manifest` — the per-ARA cached manifest, or `404` if the id
+/// is unknown. Uses the shared conditional-GET core.
+async fn hub_manifest(
+    State(state): State<HubState>,
+    AxumPath(id): AxumPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    match state.aras.get(&id) {
+        Some(cached) => serve_cached_manifest(cached, &headers),
+        None => (StatusCode::NOT_FOUND, "unknown ARA").into_response(),
+    }
+}
+
+/// Fallback: serve a shared root asset if it exists, else `404`. No SPA
+/// index-fallback — the hub has no root client-side router.
+async fn hub_asset(State(state): State<HubState>, uri: Uri) -> Response {
+    match &state.assets {
+        Assets::Embedded => embedded_asset_strict(&uri),
+        Assets::Dir(dir) => serve_dir_file(dir, &uri).await,
+    }
+}
+
+/// Serve one file from an on-disk `dist/` by exact path (no fallback). Mirrors
+/// `embedded_asset_strict` for the `--assets` hub path so the two asset sources
+/// behave identically (dev parity).
+async fn serve_dir_file(dir: &std::path::Path, uri: &Uri) -> Response {
+    use axum::body::Body;
+    use tower::ServiceExt;
+
+    let req = axum::http::Request::builder()
+        .uri(uri.clone())
+        .body(Body::empty())
+        .expect("request from a valid uri");
+    // ServeDir with no fallback → 404 for unknown paths, rejects `..` traversal,
+    // supports range + precompressed variants (matching local `--assets`).
+    // Its Service error is Infallible (IO errors are turned into responses
+    // internally), so `oneshot` never yields Err.
+    let Ok(resp) = ServeDir::new(dir)
+        .precompressed_br()
+        .precompressed_gzip()
+        .oneshot(req)
+        .await;
+    resp.into_response()
+}
+
+/// `GET /api/manifest` (local) — delegates to the shared conditional-GET core.
+async fn manifest(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    serve_cached_manifest(&state.cache.load(), &headers)
+}
+
+/// The manifest conditional-GET contract, shared by local + hub handlers.
+///
+/// Returns the cached JSON body with a strong `ETag` and `no-cache`, or `304`
+/// when `If-None-Match` matches. One source of truth so the local handler and
+/// each per-ARA hub handler cannot drift.
+fn serve_cached_manifest(cached: &CachedAra, headers: &HeaderMap) -> Response {
     if let Some(inm) = headers.get(header::IF_NONE_MATCH)
         && inm
             .to_str()
@@ -388,5 +658,261 @@ mod tests {
                 std::fs::copy(entry.path(), &to).unwrap();
             }
         }
+    }
+
+    // ── Hub router tests (oneshot; mirror the local suite) ────────────────────
+
+    /// Build a hub router over the two official fixtures under ids `resnet` and
+    /// `minimal`, returning the router + resnet's expected etag.
+    fn hub_router() -> (Router, String) {
+        let mut map: std::collections::HashMap<String, Arc<CachedAra>> =
+            std::collections::HashMap::new();
+        let resnet = CachedAra::from_dir_lean(&fixture("resnet-ara-example")).unwrap();
+        let resnet_etag = resnet.etag.clone();
+        map.insert("resnet".into(), Arc::new(resnet));
+        map.insert(
+            "minimal".into(),
+            Arc::new(CachedAra::from_dir_lean(&fixture("minimal-artifact")).unwrap()),
+        );
+        (
+            build_hub_router(Arc::new(map), Assets::Embedded),
+            resnet_etag,
+        )
+    }
+
+    async fn get(app: &Router, uri: &str) -> Response {
+        app.clone()
+            .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn hub_manifest_returns_json_and_etag() {
+        let (app, etag) = hub_router();
+        let resp = get(&app, "/a/resnet/api/manifest").await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers().get(header::CONTENT_TYPE).unwrap(),
+            "application/json"
+        );
+        assert_eq!(resp.headers().get(header::ETAG).unwrap(), etag.as_str());
+    }
+
+    #[tokio::test]
+    async fn hub_manifest_304_on_if_none_match() {
+        let (app, etag) = hub_router();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/a/resnet/api/manifest")
+                    .header(header::IF_NONE_MATCH, &etag)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_MODIFIED);
+    }
+
+    #[tokio::test]
+    async fn hub_manifest_reads_are_pure_cache_hits() {
+        // The milestone's core property: after startup, hub reads never reparse.
+        // Two sequential reads must return the SAME etag (a reparse would change
+        // it only if the content changed, but there's no watcher — so identical
+        // etag proves the same cached bytes are served both times).
+        let (app, etag) = hub_router();
+        let first = get(&app, "/a/resnet/api/manifest").await;
+        let second = get(&app, "/a/resnet/api/manifest").await;
+        assert_eq!(first.headers().get(header::ETAG).unwrap(), etag.as_str());
+        assert_eq!(
+            first.headers().get(header::ETAG),
+            second.headers().get(header::ETAG),
+            "sequential hub reads must return the same etag (no reparse)"
+        );
+    }
+
+    #[tokio::test]
+    async fn hub_distinct_aras_have_distinct_manifests() {
+        let (app, _) = hub_router();
+        let a = get(&app, "/a/resnet/api/manifest").await;
+        let b = get(&app, "/a/minimal/api/manifest").await;
+        assert_ne!(
+            a.headers().get(header::ETAG),
+            b.headers().get(header::ETAG),
+            "two ARAs must serve different manifests at their own paths"
+        );
+    }
+
+    #[tokio::test]
+    async fn hub_unknown_manifest_is_404() {
+        let (app, _) = hub_router();
+        let resp = get(&app, "/a/nope/api/manifest").await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn hub_ara_index_has_base_href_and_no_cache() {
+        let (app, _) = hub_router();
+        let resp = get(&app, "/a/resnet/").await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(
+            resp.headers()
+                .get(header::CONTENT_TYPE)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .starts_with("text/html")
+        );
+        assert_eq!(
+            resp.headers().get(header::CACHE_CONTROL).unwrap(),
+            "no-cache"
+        );
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(
+            html.contains(r#"<base href="/a/resnet/">"#),
+            "index must carry the per-ARA base href"
+        );
+    }
+
+    #[tokio::test]
+    async fn hub_known_bare_id_redirects_308() {
+        let (app, _) = hub_router();
+        let resp = get(&app, "/a/resnet").await;
+        assert_eq!(resp.status(), StatusCode::PERMANENT_REDIRECT);
+        assert_eq!(resp.headers().get(header::LOCATION).unwrap(), "/a/resnet/");
+    }
+
+    #[tokio::test]
+    async fn hub_unknown_bare_id_is_404_not_redirect() {
+        // Never a 308 to a 404 (which a browser could permanently cache).
+        let (app, _) = hub_router();
+        let resp = get(&app, "/a/nope").await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn hub_unknown_root_path_is_404_not_spa() {
+        // No SPA fallback: an unknown non-asset path must 404, not the viewer index.
+        let (app, _) = hub_router();
+        let resp = get(&app, "/typo").await;
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        assert!(
+            !String::from_utf8_lossy(&body).contains("<base"),
+            "unknown root path must not serve the viewer index"
+        );
+    }
+
+    #[tokio::test]
+    async fn hub_root_index_lists_aras() {
+        let (app, _) = hub_router();
+        let resp = get(&app, "/").await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains(r#"href="/a/resnet/""#));
+        assert!(html.contains(r#"href="/a/minimal/""#));
+    }
+
+    #[tokio::test]
+    async fn hub_shared_asset_is_served() {
+        // A real embedded root asset must load at root so per-ARA pages can
+        // fetch the shared immutable bundle. index.html is always embedded.
+        let (app, _) = hub_router();
+        let resp = get(&app, "/index.html").await;
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    // ── CLI parse tests (try_parse_from) ──────────────────────────────────────
+
+    /// Parse a full `ara serve …` arg vector through the top-level clap parser
+    /// so the `mode` ArgGroup + `--host` default are exercised as shipped.
+    fn parse(args: &[&str]) -> Result<ServeArgs, clap::Error> {
+        use clap::Parser;
+        #[derive(clap::Parser)]
+        struct Cli {
+            #[command(subcommand)]
+            cmd: Cmd,
+        }
+        #[derive(clap::Subcommand)]
+        enum Cmd {
+            Serve(ServeArgs),
+        }
+        let mut full = vec!["ara", "serve"];
+        full.extend_from_slice(args);
+        Cli::try_parse_from(full).map(|c| match c.cmd {
+            Cmd::Serve(s) => s,
+        })
+    }
+
+    #[test]
+    fn parse_local_dir_ok() {
+        let a = parse(&["some/dir"]).expect("local dir must parse");
+        assert_eq!(a.dir.as_deref(), Some(Path::new("some/dir")));
+        assert!(!a.hub);
+    }
+
+    #[test]
+    fn parse_hub_with_root_ok() {
+        let a = parse(&["--hub", "--ara-root", "/aras"]).expect("hub+root must parse");
+        assert!(a.hub);
+        assert_eq!(a.ara_root.as_deref(), Some(Path::new("/aras")));
+    }
+
+    #[test]
+    fn parse_hub_without_root_errs() {
+        assert!(parse(&["--hub"]).is_err(), "--hub requires --ara-root");
+    }
+
+    #[test]
+    fn parse_both_modes_errs() {
+        assert!(
+            parse(&["some/dir", "--hub", "--ara-root", "/aras"]).is_err(),
+            "positional dir conflicts with --hub"
+        );
+    }
+
+    #[test]
+    fn parse_neither_mode_errs() {
+        assert!(parse(&[]).is_err(), "one of dir / --hub is required");
+    }
+
+    #[test]
+    fn parse_host_defaults_to_loopback() {
+        let a = parse(&["some/dir"]).unwrap();
+        assert_eq!(a.host, std::net::IpAddr::from([127, 0, 0, 1]));
+    }
+
+    #[test]
+    fn parse_host_override_is_honored() {
+        let a = parse(&["--hub", "--ara-root", "/aras", "--host", "0.0.0.0"]).unwrap();
+        assert_eq!(a.host, std::net::IpAddr::from([0, 0, 0, 0]));
+    }
+
+    #[tokio::test]
+    async fn hub_no_head_template_errors_not_baseless() {
+        // If the index template has no <head>, the handler must 500, never serve
+        // a base-less page. Drive it through the on-disk `--assets` path with a
+        // fixture index.html lacking <head>.
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("index.html"),
+            "<!DOCTYPE html><html><body></body></html>",
+        )
+        .unwrap();
+
+        let mut map: std::collections::HashMap<String, Arc<CachedAra>> =
+            std::collections::HashMap::new();
+        map.insert(
+            "resnet".into(),
+            Arc::new(CachedAra::from_dir_lean(&fixture("resnet-ara-example")).unwrap()),
+        );
+        let app = build_hub_router(Arc::new(map), Assets::Dir(dir.path().to_path_buf()));
+
+        let resp = get(&app, "/a/resnet/").await;
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

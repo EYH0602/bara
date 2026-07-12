@@ -7,8 +7,9 @@
   --panel2:    #f4ecdf;
   --line:      #e6ddcc;
   --ink:       #2f2a23;
-  --muted:     #90856f;
+  --muted:     #726751;
   --accent:    #bf6a2e;
+  --accent-text: #8c4414;
   --chip:      #f1e9da;
   --ok:        #5d7c3f;
   --warn:      #a23b2d;
@@ -40,7 +41,7 @@ body {
   background-color: var(--bg);
   color: var(--ink);
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
   min-height: 100vh;
   display: flex;
@@ -102,9 +103,9 @@ code, kbd, samp, pre,
   background-color: var(--panel);
   border: 1px solid var(--line);
   border-radius: 4px;
-  padding: 0.2rem 0.45rem;
+  padding: 0.4rem 0.55rem;
   outline: none;
-  height: 1.75rem;
+  min-height: 2.25rem;
   transition: border-color 0.12s;
 }
 
@@ -151,7 +152,7 @@ code, kbd, samp, pre,
   border: 1px solid var(--line);
   border-radius: 4px;
   overflow: hidden;
-  height: 1.75rem;
+  min-height: 2.25rem;
 }
 
 .layout-toggle-btn {
@@ -188,7 +189,7 @@ code, kbd, samp, pre,
    bold-only-when-active label would change width and nudge the segments. */
 .layout-toggle-btn.is-active {
   background-color: var(--sel-bg);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* ── Main two-pane grid ─────────────────────────────────────────────────────── */
@@ -289,6 +290,10 @@ code, kbd, samp, pre,
 @keyframes skeleton-shimmer {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
 }
 
 /* ── Error card ─────────────────────────────────────────────────────────────── */
@@ -455,6 +460,12 @@ code, kbd, samp, pre,
   background: var(--panel2);
 }
 
+/* Keyboard focus ring — matches the graph-mode node focus style. */
+.tree-map .node:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* Selected row: warm fill + accent border (reference `.sel`). */
 .tree-map .node.sel {
   background: var(--sel-bg);
@@ -516,7 +527,7 @@ code, kbd, samp, pre,
 .tree-map .node.dead .ntitle {
   color: var(--warn);
   text-decoration: line-through;
-  text-decoration-color: rgba(162, 59, 45, 0.4);
+  text-decoration-color: color-mix(in srgb, var(--warn) 40%, transparent);
 }
 
 /* Child container — a sibling of the row, indented with a spine. */
@@ -572,8 +583,8 @@ code, kbd, samp, pre,
   background-color: var(--panel);
   border: 1px solid var(--line);
   border-radius: 4px;
-  padding: 0.2rem 0.5rem;
-  height: 1.75rem;
+  padding: 0.4rem 0.6rem;
+  min-height: 2.25rem;
   cursor: pointer;
   outline: none;
   transition: border-color 0.12s, background-color 0.12s;
@@ -589,7 +600,7 @@ code, kbd, samp, pre,
 
 .btn.primary {
   background-color: var(--sel-bg);
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: var(--accent);
 }
 

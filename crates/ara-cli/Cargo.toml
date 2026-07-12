@@ -17,7 +17,7 @@ name = "ara"
 path = "src/main.rs"
 
 [dependencies]
-ara-core = { path = "../ara-core", version = "0.1.2" }
+ara-core = { path = "../ara-core", version = "0.1.3" }
 clap = { version = "4", features = ["derive"] }
 serde_json = "1"
 
@@ -28,6 +28,9 @@ tower-http = { version = "0.6", features = ["fs", "compression-br", "compression
 notify-debouncer-full = "0.5"
 arc-swap = "1"
 bytes = "1"
+# `ServiceExt::oneshot` drives a tower-http `ServeDir` for one hub `--assets`
+# file request (dev-parity path); axum already pulls tower into the tree.
+tower = { version = "0.5", features = ["util"] }
 # Embedded viewer assets (default; `--assets <dir>` overrides at runtime).
 include_dir = "0.7"
 mime_guess = "2"
@@ -36,7 +39,6 @@ mime_guess = "2"
 assert_cmd = "2"
 predicates = "3"
 tempfile = "3"
-# HTTP-layer tests drive the router directly via `ServiceExt::oneshot`
-# (no socket/port binding), reading bodies with http-body-util.
-tower = { version = "0.5", features = ["util"] }
+# HTTP-layer tests read bodies with http-body-util; `tower` (with `util` for
+# `ServiceExt::oneshot`) is a normal dependency, so it isn't repeated here.
 http-body-util = "0.1"

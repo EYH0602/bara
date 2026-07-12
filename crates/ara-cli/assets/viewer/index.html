@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ARA Viewer</title>
-    <link rel="stylesheet" href="/styles-82eb5c54c97c4931.css" integrity="sha384-fXA/csXR57UHnTut2kRHa2BS+Y+GgChflLxwSFBMVq+ApyUvWzGfIcUp83Aiic3U"/>
+    <link rel="stylesheet" href="/styles-ce31916087608ba5.css" integrity="sha384-nd4EOo5xPwQvVn5zzvpVIdeh4thJshLw7g44PfwCS1ol2R3A5Gs5WMHlO0G6u1nU"/>
     <!-- Copy manifest.json to dist/ so the runtime fetch URL "manifest.json" resolves. -->
     <!-- Trunk does not auto-copy public/ contents; this directive is required.        -->
     
     
 <script type="module">
-import init, * as bindings from '/ara-viewer-c84d7a4f013c5aa.js';
-const wasm = await init({ module_or_path: '/ara-viewer-c84d7a4f013c5aa_bg.wasm' });
+import init, * as bindings from '/ara-viewer-51130cd69e178ac9.js';
+const wasm = await init({ module_or_path: '/ara-viewer-51130cd69e178ac9_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -20,6 +20,6 @@ window.wasmBindings = bindings;
 dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
 
 </script>
-  <link rel="modulepreload" href="/ara-viewer-c84d7a4f013c5aa.js" crossorigin="anonymous" integrity="sha384-hGo2OIMQFjAJrxeZ7DLbQP56Y1N1F/rt9RsiXjoiw15CZntVyWCkH2wtkZ60OJ6E"><link rel="preload" href="/ara-viewer-c84d7a4f013c5aa_bg.wasm" crossorigin="anonymous" integrity="sha384-NdOOBcxezxOa0b/WdN+C48jckpamJGtN2L68HbysDrxJOoTAJzHsdx3qM0wf21Rq" as="fetch" type="application/wasm"></head>
+  <link rel="modulepreload" href="/ara-viewer-51130cd69e178ac9.js" crossorigin="anonymous" integrity="sha384-c5TWSNdESvenp2BAvlOsOShbAPmio4OvAdjOFs+HEGQEklH5jKfBnrgG1NtgoYZM"><link rel="preload" href="/ara-viewer-51130cd69e178ac9_bg.wasm" crossorigin="anonymous" integrity="sha384-c4FjkLYF0ubJ7N0y/S/BBjfykE6gwlYSthTfR5/n2oAT2YXI+t8mpTYBG+v5IcgL" as="fetch" type="application/wasm"></head>
   <body></body>
 </html>

@@ -137,3 +137,77 @@ jobs:
         run: cargo install wasm-pack --locked
       - name: Run browser tests (headless Chrome)
         run: wasm-pack test --headless --chrome crates/ara-viewer --locked
+
+  docker:
+    name: docker
+    runs-on: ubuntu-24.04
+    # Builds the hub image and smoke-tests a running container against a tiny
+    # bundled fixture ARA root. Kept a separate job (Docker/buildx setup) so it
+    # doesn't slow the Rust jobs. Registry push on tags is deferred (no secrets).
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Build image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .
+          load: true
+          tags: ara-hub:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Image size budget (< 20 MB compressed)
+        run: |
+          # `docker save | gzip` approximates the registry-compressed size.
+          SIZE=$(docker save ara-hub:ci | gzip | wc -c)
+          BUDGET=$((20 * 1024 * 1024))
+          echo "compressed image size: ${SIZE} bytes (budget: ${BUDGET})"
+          if [ "$SIZE" -ge "$BUDGET" ]; then
+            echo "FAIL: image ${SIZE} >= ${BUDGET} (20 MB)"
+            exit 1
+          fi
+          echo "PASS: image under budget"
+      - name: Run container against a fixture ARA root
+        run: |
+          # Build a tiny root with the two official fixtures as ARA ids.
+          mkdir -p aras/resnet aras/minimal
+          cp -r crates/ara-core/tests/fixtures/official/resnet-ara-example/. aras/resnet/
+          cp -r crates/ara-core/tests/fixtures/official/minimal-artifact/. aras/minimal/
+          docker run -d --name ara-hub -p 8080:8080 \
+            -v "$PWD/aras:/aras:ro" ara-hub:ci
+          # Wait for readiness (the container has no shell for a healthcheck).
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://127.0.0.1:8080/; then break; fi
+            sleep 1
+          done
+      - name: Smoke-test the endpoints
+        run: |
+          set -e
+          BASE=http://127.0.0.1:8080
+
+          echo "=== /a/resnet/api/manifest → 200 application/json + ETag ==="
+          hdr=$(curl -fsS -D - -o /dev/null "$BASE/a/resnet/api/manifest")
+          echo "$hdr" | grep -qi '^HTTP.* 200'
+          echo "$hdr" | grep -qi '^content-type: application/json'
+          etag=$(echo "$hdr" | grep -i '^etag:' | tr -d '\r' | awk '{print $2}')
+          test -n "$etag"
+
+          echo "=== If-None-Match → 304 ==="
+          code=$(curl -fsS -o /dev/null -w '%{http_code}' \
+            -H "If-None-Match: $etag" "$BASE/a/resnet/api/manifest")
+          test "$code" = 304
+
+          echo "=== /a/resnet/ → 200 text/html with <base href= ==="
+          body=$(curl -fsS "$BASE/a/resnet/")
+          echo "$body" | grep -q '<base href='
+
+          echo "=== root wasm asset → 200 application/wasm ==="
+          wasm=$(basename "$(ls crates/ara-cli/assets/viewer/*_bg.wasm)")
+          ct=$(curl -fsS -D - -o /dev/null "$BASE/$wasm" \
+            | grep -i '^content-type:' | tr -d '\r')
+          echo "$ct" | grep -qi 'application/wasm'
+
+          echo "ALL SMOKE TESTS PASSED"
+      - name: Container logs (always)
+        if: always()
+        run: docker logs ara-hub || true

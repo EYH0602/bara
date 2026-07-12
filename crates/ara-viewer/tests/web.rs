@@ -23,6 +23,7 @@ use ara_viewer::{
     detail::DetailPane,
     replay::{ReplayBar, ReplayState, install_arrow_key_listener, node_order},
     scene::{GraphRenderer, GraphView, LayoutView, SvgRenderer},
+    source::ws_url_from_base,
     state::{DisplayMode, LayoutMode, LoadState, PanZoom, parse_manifest},
     toolbar::{DisplayToggle, LayoutToggle},
     tree::{TreeView, tree_model},
@@ -120,6 +121,77 @@ fn body_div(doc: &Document) -> HtmlElement {
     let div = doc.create_element("div").unwrap();
     doc.body().unwrap().append_child(&div).unwrap();
     div.unchecked_into::<HtmlElement>()
+}
+
+// ── Test: live-socket URL resolves relative to the document base (D1) ─────────
+//
+// The load-bearing hub assumption: the viewer's relative `api/live` must resolve
+// against the page base. This test drives `ws_url_from_base` with a synthetic
+// base for BOTH the local-serve root (`/`) and the hub sub-path (`/a/{id}/`), so
+// a regression in the relative resolution or the http→ws scheme swap is caught
+// without a live server. A silent break here would make local live-reload fail
+// invisibly (the socket error is intentionally swallowed as "static host").
+
+#[wasm_bindgen_test]
+fn ws_url_resolves_relative_to_document_base() {
+    // Local serve: page at origin root → api/live is same as an absolute
+    // /api/live. http base → ws scheme.
+    assert_eq!(
+        ws_url_from_base("http://localhost:8080/", "api/live").as_deref(),
+        Some("ws://localhost:8080/api/live"),
+        "root base must resolve api/live to /api/live (local serve unchanged)"
+    );
+
+    // Hub: page at /a/{id}/ → api/live resolves under that sub-path.
+    assert_eq!(
+        ws_url_from_base("http://example.com/a/resnet/", "api/live").as_deref(),
+        Some("ws://example.com/a/resnet/api/live"),
+        "sub-path base must resolve api/live under /a/{{id}}/ (hub)"
+    );
+
+    // https base → wss scheme, sub-path preserved.
+    assert_eq!(
+        ws_url_from_base("https://example.com/a/resnet/", "api/live").as_deref(),
+        Some("wss://example.com/a/resnet/api/live"),
+        "https base must swap to wss and keep the sub-path"
+    );
+}
+
+// ── Test: relative fetch resolves under <base href> in a real browser (D1) ────
+//
+// The ONE test that proves D1's load-bearing assumption in an actual browser:
+// with `<base href="/a/x/">` in the document head, a relative `api/manifest`
+// (the viewer's default manifest URL) must resolve to `/a/x/api/manifest`. The
+// native string test and the ws_url_from_base test cover the logic; only this
+// exercises the browser's real `<base>` + URL resolution the viewer relies on.
+
+#[wasm_bindgen_test]
+fn base_href_makes_relative_fetch_resolve_under_subpath() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+
+    // Inject <base href="/a/x/"> into the document head, as the hub does.
+    let head = doc.head().expect("document must have a <head>");
+    let base = doc.create_element("base").unwrap();
+    base.set_attribute("href", "/a/x/").unwrap();
+    head.append_child(&base).unwrap();
+
+    // The viewer's default manifest URL is the relative "api/manifest".
+    let manifest_url = match ara_viewer::source::ManifestSource::default() {
+        ara_viewer::source::ManifestSource::Api { manifest_url, .. } => manifest_url,
+        _ => panic!("default must be the Api variant"),
+    };
+
+    // Resolve it exactly as the browser's fetch would: against document.baseURI.
+    let base_uri = doc.base_uri().unwrap().expect("baseURI present");
+    let resolved = web_sys::Url::new_with_base(&manifest_url, &base_uri).unwrap();
+    assert_eq!(
+        resolved.pathname(),
+        "/a/x/api/manifest",
+        "relative api/manifest must resolve under the injected <base href>"
+    );
+
+    // Clean up so the base tag doesn't leak into sibling tests.
+    head.remove_child(&base).unwrap();
 }
 
 // ── Test: node count equals nodes-with-pos count ──────────────────────────────
