@@ -41,7 +41,7 @@ body {
   background-color: var(--bg);
   color: var(--ink);
   font-family: var(--font-body);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
   min-height: 100vh;
   display: flex;
@@ -103,9 +103,9 @@ code, kbd, samp, pre,
   background-color: var(--panel);
   border: 1px solid var(--line);
   border-radius: 4px;
-  padding: 0.2rem 0.45rem;
+  padding: 0.4rem 0.55rem;
   outline: none;
-  height: 1.75rem;
+  min-height: 2.25rem;
   transition: border-color 0.12s;
 }
 
@@ -152,7 +152,7 @@ code, kbd, samp, pre,
   border: 1px solid var(--line);
   border-radius: 4px;
   overflow: hidden;
-  height: 1.75rem;
+  min-height: 2.25rem;
 }
 
 .layout-toggle-btn {
@@ -583,8 +583,8 @@ code, kbd, samp, pre,
   background-color: var(--panel);
   border: 1px solid var(--line);
   border-radius: 4px;
-  padding: 0.2rem 0.5rem;
-  height: 1.75rem;
+  padding: 0.4rem 0.6rem;
+  min-height: 2.25rem;
   cursor: pointer;
   outline: none;
   transition: border-color 0.12s, background-color 0.12s;
