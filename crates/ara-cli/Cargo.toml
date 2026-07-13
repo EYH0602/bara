@@ -12,9 +12,10 @@ categories.workspace = true
 readme = "README.md"
 default-run = "ara"
 
-# ara-cli is the only workspace member cargo-dist ships (the `ara` binary).
-# `formula = "ara"` names the Homebrew formula after the binary (not the crate),
-# so the install command is `brew install ARA-Labs/tap/ara`, not `.../ara-cli`.
+# The workspace defaults `dist = false`; ara-cli opts back in so only the `ara`
+# binary ships. `formula = "ara"` names the Homebrew formula after the binary
+# (not the crate), so the install command is `brew install ARA-Labs/tap/ara`,
+# not `.../ara-cli`.
 [package.metadata.dist]
 dist = true
 formula = "ara"

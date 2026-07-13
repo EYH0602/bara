@@ -11,12 +11,6 @@ keywords.workspace = true
 categories.workspace = true
 readme = "README.md"
 
-# The `ara-viewer` bin is a Leptos CSR dev/build entrypoint (compiled to wasm by
-# trunk), not a shippable native tool. Exclude it from cargo-dist so releases
-# carry only the `ara` binary from `ara-cli`.
-[package.metadata.dist]
-dist = false
-
 [[bin]]
 name = "ara-viewer"
 path = "src/main.rs"
