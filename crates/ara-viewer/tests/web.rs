@@ -1279,3 +1279,642 @@ async fn replay_interval_cleared_on_unmount() {
         "playing flag reset on unmount cleanup"
     );
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Splitter (draggable gutter) browser interaction tests
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// The `Splitter` component measures geometry via `.closest(".app-main")`, so
+// every test mounts the gutter inside a wrapper `<main class="app-main …">`. The
+// test harness does NOT load `public/styles.css`, so an unstyled `.panel-gutter`
+// div would have width = container width and height = 0 — unrealistic geometry
+// that makes the pointer math meaningless. To fix that we inject a deterministic
+// `<style>` block into `document.head` before mounting (see `inject_split_style`).
+//
+// Expected ratios are never hardcoded: after dispatching a synthetic event we
+// recompute the expected value with the SAME public pure function
+// (`clamp_split_ratio`) against the SAME measured geometry. This keeps the
+// assertions self-consistent (robust to any harness offset) while still proving
+// the component wires the pointer → ratio → signal path and the clamp correctly.
+
+use ara_viewer::splitter::{
+    KEYBOARD_STEP, SPLIT_DEFAULT_RATIO, STACK_DEFAULT_RATIO, Splitter, clamp_split_ratio,
+    default_ratio, floors_for,
+};
+
+// ── Helper: inject deterministic gutter geometry ──────────────────────────────
+//
+// Sizes the `.app-main` wrapper to a fixed 1000×600 box and gives the gutter a
+// 6 px cross-axis thickness in each layout. Appended once per test to
+// `document.head`; leftover style tags across tests are harmless because the
+// selectors are keyed on the wrapper's `layout-*` class.
+fn inject_split_style(doc: &Document) {
+    let style = doc.create_element("style").unwrap();
+    style.set_text_content(Some(
+        "
+        .app-main { position: absolute; top: 0; left: 0; box-sizing: border-box; }
+        .app-main.layout-split  { width: 1000px; height: 600px; }
+        .app-main.layout-split  .panel-gutter { width: 6px;  height: 600px; }
+        .app-main.layout-stack  { width: 1000px; height: 600px; }
+        .app-main.layout-stack  .panel-gutter { height: 6px; width: 1000px; }
+        ",
+    ));
+    doc.head().unwrap().append_child(&style).unwrap();
+}
+
+// ── Helper: a `<main class="app-main layout-…">` wrapper attached to body ─────
+fn app_main_wrapper(doc: &Document, layout_class: &str) -> HtmlElement {
+    let main = doc.create_element("main").unwrap();
+    main.set_class_name(&format!("app-main {layout_class}"));
+    doc.body().unwrap().append_child(&main).unwrap();
+    main.unchecked_into::<HtmlElement>()
+}
+
+// ── Helper: synthetic pointer event dispatched on `el` ────────────────────────
+fn dispatch_pointer(el: &web_sys::Element, kind: &str, client_x: i32, client_y: i32) {
+    let init = web_sys::PointerEventInit::new();
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    init.set_pointer_id(1);
+    init.set_client_x(client_x);
+    init.set_client_y(client_y);
+    let ev = web_sys::PointerEvent::new_with_event_init_dict(kind, &init).unwrap();
+    el.dispatch_event(&ev).unwrap();
+}
+
+// ── Helper: synthetic keydown dispatched on `el` ──────────────────────────────
+fn dispatch_keydown(el: &web_sys::Element, key: &str) {
+    let init = web_sys::KeyboardEventInit::new();
+    init.set_key(key);
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let ev = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    el.dispatch_event(&ev).unwrap();
+}
+
+// ── Helper: synthetic dblclick dispatched on `el` ─────────────────────────────
+fn dispatch_dblclick(el: &web_sys::Element) {
+    let init = web_sys::MouseEventInit::new();
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let ev = web_sys::MouseEvent::new_with_mouse_event_init_dict("dblclick", &init).unwrap();
+    el.dispatch_event(&ev).unwrap();
+}
+
+// ── Helper: body has (or lacks) a class ───────────────────────────────────────
+fn body_has_class(doc: &Document, class: &str) -> bool {
+    doc.body().unwrap().class_list().contains(class)
+}
+
+// ── Test 1: pointer drag in Split updates the ratio + clamp holds both floors ─
+
+/// Split mode: a pointerdown+pointermove writes the clamped fraction into
+/// `split_ratio`; a mid-range drag lands strictly inside the two floor ratios;
+/// extreme-left clamps to the map floor and extreme-right to the detail floor.
+/// Every expected value is recomputed from the measured geometry via the public
+/// `clamp_split_ratio`, so the assertion proves the wiring, not a magic number.
+#[wasm_bindgen_test]
+async fn splitter_pointer_drag_split_updates_ratio_and_clamps() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    inject_split_style(&doc);
+    let wrapper = app_main_wrapper(&doc, "layout-split");
+
+    let layout: RwSignal<LayoutMode> = RwSignal::new(LayoutMode::Split);
+    let split_ratio: RwSignal<f64> = RwSignal::new(SPLIT_DEFAULT_RATIO);
+    let stack_ratio: RwSignal<f64> = RwSignal::new(STACK_DEFAULT_RATIO);
+    let dragging: RwSignal<bool> = RwSignal::new(false);
+
+    let _handle = leptos::mount::mount_to(wrapper.clone().unchecked_into(), move || {
+        view! {
+            <Splitter
+                layout=layout
+                split_ratio=split_ratio
+                stack_ratio=stack_ratio
+                dragging=dragging
+            />
+        }
+    });
+
+    let gutter = wrapper
+        .query_selector(".panel-gutter")
+        .unwrap()
+        .expect("gutter must render");
+
+    // Measure the real geometry the component will see.
+    let rect = wrapper.get_bounding_client_rect();
+    let grect = gutter.get_bounding_client_rect();
+    let axis = rect.width();
+    let gutter_px = grect.width();
+    let (m1, m2) = floors_for(LayoutMode::Split);
+    let lo = clamp_split_ratio(0.0, axis, gutter_px, m1, m2);
+    let hi = clamp_split_ratio(1.0, axis, gutter_px, m1, m2);
+
+    // Mid-range drag: pointerdown (arms `dragging`) then a pointermove at X=500.
+    dispatch_pointer(&gutter, "pointerdown", 500, 300);
+    dispatch_pointer(&gutter, "pointermove", 500, 300);
+    leptos::task::tick().await;
+
+    let raw_mid = (500.0 - rect.left() - gutter_px / 2.0) / axis;
+    let expected_mid = clamp_split_ratio(raw_mid, axis, gutter_px, m1, m2);
+    assert!(
+        (split_ratio.get_untracked() - expected_mid).abs() < 1e-9,
+        "mid drag must equal clamp of measured raw ({expected_mid}), got {}",
+        split_ratio.get_untracked()
+    );
+    assert!(
+        split_ratio.get_untracked() > lo && split_ratio.get_untracked() < hi,
+        "mid drag must land strictly between the floor ratios (lo={lo}, hi={hi})"
+    );
+
+    // Extreme-left drag → clamps to the map floor (lo).
+    dispatch_pointer(&gutter, "pointermove", 0, 300);
+    leptos::task::tick().await;
+    assert!(
+        (split_ratio.get_untracked() - lo).abs() < 1e-9,
+        "extreme-left drag must clamp to the map floor ({lo}), got {}",
+        split_ratio.get_untracked()
+    );
+
+    // Extreme-right drag → clamps to the detail floor (hi).
+    dispatch_pointer(&gutter, "pointermove", 2000, 300);
+    leptos::task::tick().await;
+    assert!(
+        (split_ratio.get_untracked() - hi).abs() < 1e-9,
+        "extreme-right drag must clamp to the detail floor ({hi}), got {}",
+        split_ratio.get_untracked()
+    );
+}
+
+// ── Test 2: pointer drag in Stack updates the row ratio + clamp holds ─────────
+
+/// Stack mode mirrors test 1 but drives the vertical axis: clientY + heights
+/// feed the clamp, and the value lands in `stack_ratio` (never `split_ratio`).
+#[wasm_bindgen_test]
+async fn splitter_pointer_drag_stack_updates_ratio_and_clamps() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    inject_split_style(&doc);
+    let wrapper = app_main_wrapper(&doc, "layout-stack");
+
+    let layout: RwSignal<LayoutMode> = RwSignal::new(LayoutMode::Stack);
+    let split_ratio: RwSignal<f64> = RwSignal::new(SPLIT_DEFAULT_RATIO);
+    let stack_ratio: RwSignal<f64> = RwSignal::new(STACK_DEFAULT_RATIO);
+    let dragging: RwSignal<bool> = RwSignal::new(false);
+
+    let _handle = leptos::mount::mount_to(wrapper.clone().unchecked_into(), move || {
+        view! {
+            <Splitter
+                layout=layout
+                split_ratio=split_ratio
+                stack_ratio=stack_ratio
+                dragging=dragging
+            />
+        }
+    });
+
+    let gutter = wrapper
+        .query_selector(".panel-gutter")
+        .unwrap()
+        .expect("gutter must render");
+
+    let rect = wrapper.get_bounding_client_rect();
+    let grect = gutter.get_bounding_client_rect();
+    let axis = rect.height();
+    let gutter_px = grect.height();
+    let (m1, m2) = floors_for(LayoutMode::Stack);
+    let lo = clamp_split_ratio(0.0, axis, gutter_px, m1, m2);
+    let hi = clamp_split_ratio(1.0, axis, gutter_px, m1, m2);
+
+    // Mid-range drag at Y=300.
+    dispatch_pointer(&gutter, "pointerdown", 500, 300);
+    dispatch_pointer(&gutter, "pointermove", 500, 300);
+    leptos::task::tick().await;
+
+    let raw_mid = (300.0 - rect.top() - gutter_px / 2.0) / axis;
+    let expected_mid = clamp_split_ratio(raw_mid, axis, gutter_px, m1, m2);
+    assert!(
+        (stack_ratio.get_untracked() - expected_mid).abs() < 1e-9,
+        "mid drag must equal clamp of measured raw ({expected_mid}), got {}",
+        stack_ratio.get_untracked()
+    );
+    assert!(
+        stack_ratio.get_untracked() > lo && stack_ratio.get_untracked() < hi,
+        "mid stack drag must land strictly between the floor ratios (lo={lo}, hi={hi})"
+    );
+    // The Split ratio must not have moved.
+    assert!(
+        (split_ratio.get_untracked() - SPLIT_DEFAULT_RATIO).abs() < 1e-9,
+        "stack drag must not touch split_ratio"
+    );
+
+    // Extreme-top → map floor.
+    dispatch_pointer(&gutter, "pointermove", 500, 0);
+    leptos::task::tick().await;
+    assert!(
+        (stack_ratio.get_untracked() - lo).abs() < 1e-9,
+        "extreme-top drag must clamp to the map floor ({lo})"
+    );
+
+    // Extreme-bottom → detail floor.
+    dispatch_pointer(&gutter, "pointermove", 500, 2000);
+    leptos::task::tick().await;
+    assert!(
+        (stack_ratio.get_untracked() - hi).abs() < 1e-9,
+        "extreme-bottom drag must clamp to the detail floor ({hi})"
+    );
+}
+
+// ── Test 3: keyboard Arrow/Home/End update the ratio + aria-valuenow ──────────
+
+/// Split mode: ArrowRight steps the ratio up by one `KEYBOARD_STEP` and the
+/// `aria-valuenow` attribute reflects it; Home drops to the reachable min and
+/// End climbs to the reachable max. `aria-valuemin`/`aria-valuemax` must be the
+/// real clamped bounds (not the pre-measurement 0/100 fallback).
+#[wasm_bindgen_test]
+async fn splitter_keyboard_updates_ratio_and_aria() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    inject_split_style(&doc);
+    let wrapper = app_main_wrapper(&doc, "layout-split");
+
+    let layout: RwSignal<LayoutMode> = RwSignal::new(LayoutMode::Split);
+    let split_ratio: RwSignal<f64> = RwSignal::new(SPLIT_DEFAULT_RATIO);
+    let stack_ratio: RwSignal<f64> = RwSignal::new(STACK_DEFAULT_RATIO);
+    let dragging: RwSignal<bool> = RwSignal::new(false);
+
+    let _handle = leptos::mount::mount_to(wrapper.clone().unchecked_into(), move || {
+        view! {
+            <Splitter
+                layout=layout
+                split_ratio=split_ratio
+                stack_ratio=stack_ratio
+                dragging=dragging
+            />
+        }
+    });
+
+    let gutter = wrapper
+        .query_selector(".panel-gutter")
+        .unwrap()
+        .expect("gutter must render");
+
+    let rect = wrapper.get_bounding_client_rect();
+    let grect = gutter.get_bounding_client_rect();
+    let axis = rect.width();
+    let gutter_px = grect.width();
+    let (m1, m2) = floors_for(LayoutMode::Split);
+    let lo = clamp_split_ratio(0.0, axis, gutter_px, m1, m2);
+    let hi = clamp_split_ratio(1.0, axis, gutter_px, m1, m2);
+
+    let before = split_ratio.get_untracked();
+    dispatch_keydown(&gutter, "ArrowRight");
+    leptos::task::tick().await;
+    let after = split_ratio.get_untracked();
+    assert!(
+        (after - (before + KEYBOARD_STEP)).abs() < 1e-9,
+        "ArrowRight must raise the ratio by one KEYBOARD_STEP ({before} -> {after})"
+    );
+    // aria-valuenow tracks the ratio (rounded percent).
+    let expected_now = (after * 100.0).round() as i64;
+    assert_eq!(
+        gutter.get_attribute("aria-valuenow").as_deref(),
+        Some(expected_now.to_string().as_str()),
+        "aria-valuenow must follow the ratio after ArrowRight"
+    );
+
+    // Home → reachable min.
+    dispatch_keydown(&gutter, "Home");
+    leptos::task::tick().await;
+    assert!(
+        (split_ratio.get_untracked() - lo).abs() < 1e-9,
+        "Home must clamp to the reachable min ({lo})"
+    );
+
+    // End → reachable max.
+    dispatch_keydown(&gutter, "End");
+    leptos::task::tick().await;
+    assert!(
+        (split_ratio.get_untracked() - hi).abs() < 1e-9,
+        "End must clamp to the reachable max ({hi})"
+    );
+
+    // aria-valuemin / aria-valuemax must be the measured bounds, not 0 / 100.
+    let expected_min = (lo * 100.0).round() as i64;
+    let expected_max = (hi * 100.0).round() as i64;
+    assert_eq!(
+        gutter.get_attribute("aria-valuemin").as_deref(),
+        Some(expected_min.to_string().as_str()),
+        "aria-valuemin must equal the reachable map floor percent ({expected_min})"
+    );
+    assert_eq!(
+        gutter.get_attribute("aria-valuemax").as_deref(),
+        Some(expected_max.to_string().as_str()),
+        "aria-valuemax must equal the reachable detail floor percent ({expected_max})"
+    );
+    assert!(
+        expected_min > 0 && expected_max < 100,
+        "measured bounds must be strictly inside 0..100 (min={expected_min}, max={expected_max})"
+    );
+}
+
+// ── Test 4: double-click resets to the mode default ───────────────────────────
+
+/// A non-default `split_ratio` returns to `SPLIT_DEFAULT_RATIO` on dblclick.
+#[wasm_bindgen_test]
+async fn splitter_dblclick_resets_to_default() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    inject_split_style(&doc);
+    let wrapper = app_main_wrapper(&doc, "layout-split");
+
+    let layout: RwSignal<LayoutMode> = RwSignal::new(LayoutMode::Split);
+    let split_ratio: RwSignal<f64> = RwSignal::new(0.6);
+    let stack_ratio: RwSignal<f64> = RwSignal::new(STACK_DEFAULT_RATIO);
+    let dragging: RwSignal<bool> = RwSignal::new(false);
+
+    let _handle = leptos::mount::mount_to(wrapper.clone().unchecked_into(), move || {
+        view! {
+            <Splitter
+                layout=layout
+                split_ratio=split_ratio
+                stack_ratio=stack_ratio
+                dragging=dragging
+            />
+        }
+    });
+
+    let gutter = wrapper
+        .query_selector(".panel-gutter")
+        .unwrap()
+        .expect("gutter must render");
+
+    assert!(
+        (split_ratio.get_untracked() - 0.6).abs() < 1e-9,
+        "precondition: ratio starts non-default"
+    );
+    dispatch_dblclick(&gutter);
+    leptos::task::tick().await;
+    assert!(
+        (split_ratio.get_untracked() - SPLIT_DEFAULT_RATIO).abs() < 1e-9,
+        "dblclick must reset split_ratio to SPLIT_DEFAULT_RATIO, got {}",
+        split_ratio.get_untracked()
+    );
+    assert!(
+        (split_ratio.get_untracked() - default_ratio(LayoutMode::Split)).abs() < 1e-9,
+        "reset value must equal default_ratio(Split)"
+    );
+}
+
+// ── Test 5: per-mode preservation across layout flips ─────────────────────────
+
+/// A single `layout` signal drives both a drag in Split and a drag in Stack.
+/// After flipping back to Split, each mode's ratio must retain its own dragged
+/// value — the two ratios never bleed into each other. The wrapper's `layout-*`
+/// class is kept in sync so the injected geometry matches the active mode.
+#[wasm_bindgen_test]
+async fn splitter_per_mode_ratios_are_preserved() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    inject_split_style(&doc);
+    let wrapper = app_main_wrapper(&doc, "layout-split");
+
+    let layout: RwSignal<LayoutMode> = RwSignal::new(LayoutMode::Split);
+    let split_ratio: RwSignal<f64> = RwSignal::new(SPLIT_DEFAULT_RATIO);
+    let stack_ratio: RwSignal<f64> = RwSignal::new(STACK_DEFAULT_RATIO);
+    let dragging: RwSignal<bool> = RwSignal::new(false);
+
+    let _handle = leptos::mount::mount_to(wrapper.clone().unchecked_into(), move || {
+        view! {
+            <Splitter
+                layout=layout
+                split_ratio=split_ratio
+                stack_ratio=stack_ratio
+                dragging=dragging
+            />
+        }
+    });
+
+    let gutter = wrapper
+        .query_selector(".panel-gutter")
+        .unwrap()
+        .expect("gutter must render");
+
+    // Drag in Split at X=450.
+    dispatch_pointer(&gutter, "pointerdown", 450, 300);
+    dispatch_pointer(&gutter, "pointermove", 450, 300);
+    dispatch_pointer(&gutter, "pointerup", 450, 300);
+    leptos::task::tick().await;
+    let split_val = split_ratio.get_untracked();
+    assert!(
+        (split_val - SPLIT_DEFAULT_RATIO).abs() > 1e-6,
+        "split drag must have moved split_ratio off its default"
+    );
+
+    // Flip to Stack: update BOTH the signal (handler logic) and the wrapper class
+    // (injected geometry).
+    layout.set(LayoutMode::Stack);
+    wrapper.set_class_name("app-main layout-stack");
+    leptos::task::tick().await;
+
+    // Drag in Stack at Y=250.
+    dispatch_pointer(&gutter, "pointerdown", 500, 250);
+    dispatch_pointer(&gutter, "pointermove", 500, 250);
+    dispatch_pointer(&gutter, "pointerup", 500, 250);
+    leptos::task::tick().await;
+    let stack_val = stack_ratio.get_untracked();
+    assert!(
+        (stack_val - STACK_DEFAULT_RATIO).abs() > 1e-6,
+        "stack drag must have moved stack_ratio off its default"
+    );
+    // Split ratio must be untouched by the stack drag.
+    assert!(
+        (split_ratio.get_untracked() - split_val).abs() < 1e-9,
+        "stack drag must not disturb split_ratio"
+    );
+
+    // Flip back to Split.
+    layout.set(LayoutMode::Split);
+    wrapper.set_class_name("app-main layout-split");
+    leptos::task::tick().await;
+
+    assert!(
+        (split_ratio.get_untracked() - split_val).abs() < 1e-9,
+        "split_ratio must survive the round-trip unchanged ({split_val})"
+    );
+    assert!(
+        (stack_ratio.get_untracked() - stack_val).abs() < 1e-9,
+        "stack_ratio must survive the round-trip unchanged ({stack_val})"
+    );
+}
+
+// ── Test 6: body-lock cleanup on BOTH pointerup and pointercancel ─────────────
+
+/// pointerdown adds the global body lock (`is-resizing` + `resizing-col` in
+/// Split). pointerUP must clear all three lock classes. The regression case: a
+/// pointerCANCEL (fresh mount) must ALSO fully clear the lock — a cancelled drag
+/// that skipped cleanup would freeze the cursor/selection for the whole document.
+#[wasm_bindgen_test]
+async fn splitter_body_lock_cleared_on_pointerup_and_cancel() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    inject_split_style(&doc);
+
+    // ── pointerup path ──
+    {
+        let wrapper = app_main_wrapper(&doc, "layout-split");
+        let layout: RwSignal<LayoutMode> = RwSignal::new(LayoutMode::Split);
+        let split_ratio: RwSignal<f64> = RwSignal::new(SPLIT_DEFAULT_RATIO);
+        let stack_ratio: RwSignal<f64> = RwSignal::new(STACK_DEFAULT_RATIO);
+        let dragging: RwSignal<bool> = RwSignal::new(false);
+
+        let _handle = leptos::mount::mount_to(wrapper.clone().unchecked_into(), move || {
+            view! {
+                <Splitter
+                    layout=layout
+                    split_ratio=split_ratio
+                    stack_ratio=stack_ratio
+                    dragging=dragging
+                />
+            }
+        });
+        let gutter = wrapper.query_selector(".panel-gutter").unwrap().unwrap();
+
+        dispatch_pointer(&gutter, "pointerdown", 500, 300);
+        leptos::task::tick().await;
+        assert!(
+            body_has_class(&doc, "is-resizing"),
+            "pointerdown must add is-resizing to body"
+        );
+        assert!(
+            body_has_class(&doc, "resizing-col"),
+            "pointerdown in Split must add resizing-col to body"
+        );
+
+        dispatch_pointer(&gutter, "pointerup", 500, 300);
+        leptos::task::tick().await;
+        assert!(
+            !body_has_class(&doc, "is-resizing")
+                && !body_has_class(&doc, "resizing-col")
+                && !body_has_class(&doc, "resizing-row"),
+            "pointerup must clear all three body lock classes"
+        );
+    }
+
+    // ── pointercancel path (the key regression) ──
+    {
+        let wrapper = app_main_wrapper(&doc, "layout-split");
+        let layout: RwSignal<LayoutMode> = RwSignal::new(LayoutMode::Split);
+        let split_ratio: RwSignal<f64> = RwSignal::new(SPLIT_DEFAULT_RATIO);
+        let stack_ratio: RwSignal<f64> = RwSignal::new(STACK_DEFAULT_RATIO);
+        let dragging: RwSignal<bool> = RwSignal::new(false);
+
+        let _handle = leptos::mount::mount_to(wrapper.clone().unchecked_into(), move || {
+            view! {
+                <Splitter
+                    layout=layout
+                    split_ratio=split_ratio
+                    stack_ratio=stack_ratio
+                    dragging=dragging
+                />
+            }
+        });
+        let gutter = wrapper.query_selector(".panel-gutter").unwrap().unwrap();
+
+        dispatch_pointer(&gutter, "pointerdown", 500, 300);
+        leptos::task::tick().await;
+        assert!(
+            body_has_class(&doc, "is-resizing"),
+            "pointerdown must add is-resizing before cancel"
+        );
+
+        dispatch_pointer(&gutter, "pointercancel", 500, 300);
+        leptos::task::tick().await;
+        assert!(
+            !body_has_class(&doc, "is-resizing")
+                && !body_has_class(&doc, "resizing-col")
+                && !body_has_class(&doc, "resizing-row"),
+            "pointercancel must fully clear the body lock (no stuck global lock)"
+        );
+    }
+}
+
+// ── Test 7: <800px mobile collapse regression ─────────────────────────────────
+//
+// Approach: iframe with the REAL stylesheet.  We build a 375 px-wide `<iframe>`,
+// write the actual `public/styles.css` into it (via `include_str!`) plus minimal
+// `.app-main` markup, then read the *computed* style. This exercises the genuine
+// `@media (max-width: 800px)` cascade in a real layout engine, so the test fails
+// if EITHER mobile rule (single-column grid OR gutter `display:none`) is deleted.
+//
+// The iframe/computed-style path works reliably under
+// `wasm-pack test --headless --chrome`; no fallback was needed.
+#[wasm_bindgen_test]
+async fn splitter_mobile_collapse_hides_gutter_and_single_column() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+
+    // 375 px-wide iframe → triggers the max-width:800px media query.
+    let iframe = doc
+        .create_element("iframe")
+        .unwrap()
+        .dyn_into::<web_sys::HtmlIFrameElement>()
+        .unwrap();
+    iframe.set_attribute("width", "375").unwrap();
+    iframe.set_attribute("height", "600").unwrap();
+    iframe
+        .set_attribute("style", "width:375px;height:600px;border:0;")
+        .unwrap();
+    doc.body().unwrap().append_child(&iframe).unwrap();
+
+    let idoc = iframe
+        .content_document()
+        .expect("iframe must expose a content document");
+
+    // Inject the real stylesheet + minimal viewer markup by writing into the
+    // iframe's root element. `set_inner_html` on <html> is the reliable
+    // cross-browser path in the headless harness (vs `document.write`).
+    let styles = include_str!("../public/styles.css");
+    let idoc_html = idoc.document_element().unwrap();
+    idoc_html.set_inner_html(&format!(
+        "<head><style>{styles}</style></head><body>\
+         <main class=\"app-main layout-split\">\
+           <section class=\"panel panel-map\"></section>\
+           <div class=\"panel-gutter\"></div>\
+           <section class=\"panel panel-detail\"></section>\
+         </main></body>"
+    ));
+
+    // Let layout/style resolution settle.
+    leptos::task::tick().await;
+
+    let iwin = iframe.content_window().expect("iframe window");
+    let iwin: web_sys::Window = iwin.unchecked_into();
+
+    let gutter = idoc
+        .query_selector(".panel-gutter")
+        .unwrap()
+        .expect("gutter must exist in iframe");
+    let main = idoc
+        .query_selector(".app-main")
+        .unwrap()
+        .expect("app-main must exist in iframe");
+
+    // Assert 1: the gutter is display:none under the mobile media query.
+    let gutter_cs = iwin
+        .get_computed_style(&gutter)
+        .unwrap()
+        .expect("computed style for gutter");
+    let display = gutter_cs.get_property_value("display").unwrap();
+    assert_eq!(
+        display, "none",
+        "at <800px the gutter must be display:none (got {display:?})"
+    );
+
+    // Assert 2: .app-main collapses to a single grid column. A single-track
+    // computed `grid-template-columns` has no internal space (multi-track values
+    // are space-separated, e.g. "320px 6px 434px").
+    let main_cs = iwin
+        .get_computed_style(&main)
+        .unwrap()
+        .expect("computed style for app-main");
+    let cols = main_cs.get_property_value("grid-template-columns").unwrap();
+    let track_count = cols.split_whitespace().count();
+    assert_eq!(
+        track_count, 1,
+        "at <800px .app-main must be a single grid column (got {cols:?})"
+    );
+}
