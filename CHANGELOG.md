@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Bump dependencies: `tower-http` 0.6 → 0.7 and `notify-debouncer-full` 0.5 →
+  0.7 (`ara-cli`), and `gloo-net` 0.6 → 0.7 (`ara-viewer`). Regenerated the
+  embedded viewer bundle so the shipped wasm matches the `gloo-net` bump.
+  (#20, #21, #22)
+- Bump CI actions: `docker/setup-buildx-action` 3 → 4 and
+  `docker/build-push-action` 6 → 7. (#18, #19)
+
 ## [0.1.3] - 2026-07-12
 
 ### Added
