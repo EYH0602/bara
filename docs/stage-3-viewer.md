@@ -67,9 +67,60 @@ with a segmented **stack | split** toggle in the header toolbar:
 
 The choice is a `LayoutMode` signal in `App` (session-only, survives manifest
 swaps like the other view-state signals) applied as a `.layout-stack` /
-`.layout-split` modifier class on `.app-main`, which also flips the panel
-divider between a right and a bottom border. Narrow viewports (≤ 800px) stack
-regardless of the selected mode.
+`.layout-split` modifier class on `.app-main`, which also flips the draggable
+divider between the split (vertical) and stack (horizontal) axes (see
+**Resizable panels** below). Narrow viewports (≤ 800px) stack regardless of the
+selected mode.
+
+### Resizable panels
+
+The map/detail divider is a **draggable gutter**, not a static border: users
+drag it to rebalance the panes — left/right in split, up/down in stack. The
+mechanism is a single CSS custom property `--split` written on `<main>`; the
+stylesheet keeps ownership of `grid-template-*` via `var(--split, <default>)`,
+so the `@media (max-width: 800px)` collapse still wins in **pure CSS** (it
+overrides `grid-template-*` directly and hides the gutter). No `matchMedia`, no
+viewport signal, no listener lifecycle.
+
+- **Two per-mode ratio signals** in `App` — `split_ratio` (default **0.38**) and
+  `stack_ratio` (default **0.667**), matching the pre-resize proportions. Two
+  signals because a column fraction and a row fraction aren't comparable across
+  axes, so a single shared ratio would bleed one into the other on mode toggle.
+  Both are plain `RwSignal`s — **in-memory only**, reset to the default on
+  reload (correct for arahub multi-ARA hub mode; no per-ARA storage).
+- **Gutter-aware ratio math** — the draggable line is the gutter *centre*
+  (`pane1 + gutter/2`), so the pointer→ratio conversion subtracts `gutter/2` and
+  `clamp_split_ratio` takes `gutter_px`; the floors aren't off by the gutter
+  width. Pane floors are **structural** — `minmax()` on *both* grid tracks — so
+  they hold on initial render, reset, mode-toggle, and resize, not just during a
+  drag: split → map ≥ 320px / detail ≥ 240px; stack → map ≥ 180px / detail ≥
+  180px.
+- **Accessible WAI-ARIA window-splitter** — the gutter is `role="separator"`,
+  `tabindex=0`, with `aria-orientation` per mode and `aria-valuenow` +
+  *reachable-bounds* `aria-valuemin`/`aria-valuemax` (the clamp window, not a
+  nominal 0–100). Arrow keys step ±0.02 along the mode axis, `Home`/`End` jump to
+  the clamp ends, and both key and pointer paths run through the same
+  `clamp_split_ratio`. Double-click resets the active mode's ratio to its default
+  — the only recovery path given the in-memory ratio.
+- **Reactive drag state, global body lock** — a `dragging` signal is folded into
+  `<main>`'s reactive class closure (never patched imperatively, which Leptos
+  would wipe on re-render). During a drag a `body.is-resizing` class sets both
+  `user-select: none` and the resize cursor (on `body`, not `.app-main`), so a
+  fast drag over the header keeps the cursor and selects no text. The pointer
+  handlers release pointer capture and clear the lock on **both** `pointerup` and
+  `pointercancel`, so a cancelled drag can't strand the global lock.
+- **Thin line, wide hit area** — the painted divider is a 1px `::before`; the
+  interactive track is `--gutter` (6px mouse, 24px under `@media (pointer:
+  coarse)`). Hover/focus brightens the 1px line with the app-standard `0.12s`
+  transition using a mid-tone; the full `--accent` fill is reserved for the
+  active-drag state.
+
+The pure resize core and the `Splitter` component live in `splitter.rs`;
+`clamp_split_ratio` and the keyboard-step helper are native-unit-tested (both
+mode floor sets, gutter subtraction, midpoint pass-through, degenerate axis, and
+key-step/pointer parity), and the headless-chrome layer covers the drag,
+keyboard, double-click, per-mode preservation, body-lock cleanup, and the
+mandatory <800px single-column-collapse regression.
 
 ### Display modes
 
@@ -126,7 +177,7 @@ Crate layout (`lib` + `bin` so components are import-testable):
 
 | Module | Responsibility |
 |--------|----------------|
-| `lib.rs` | `App` shell + `MapPane`; owns the view-state signals |
+| `lib.rs` | `App` shell + `MapPane`; owns the view-state signals (incl. per-mode `split_ratio`/`stack_ratio` + `dragging`) |
 | `main.rs` | 8-line binary → `ara_viewer::mount()` |
 | `kind.rs` | `kind_meta(&NodeKind)` — the single source of truth for wire css class / glyph / badge |
 | `state.rs` | `LoadState`, `MapSurface`/`map_surface`, `safe_viewbox`, `PanZoom`/`ViewState`/`apply_manifest`, `LayoutMode`, `parse_manifest` |
@@ -134,6 +185,7 @@ Crate layout (`lib` + `bin` so components are import-testable):
 | `scene.rs` | pure scene model + `GraphRenderer` trait + `SvgRenderer` + the interactive `GraphView` |
 | `detail.rs` | pure `detail_model` + the `DetailPane` component |
 | `filter.rs` | `FilterState` + the pure `node_matches` predicate |
+| `splitter.rs` | pure `clamp_split_ratio` + keyboard-step math + the draggable `Splitter` (WAI-ARIA window-splitter) |
 | `toolbar.rs` | the header `Toolbar` (filters) + `LayoutToggle` (stack/split) components |
 | `canvas.rs` | `CanvasRenderer` stub (the fps contingency, unbuilt) |
 
