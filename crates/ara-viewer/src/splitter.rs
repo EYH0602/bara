@@ -236,6 +236,18 @@ fn measure(gutter_el: &web_sys::Element, layout: LayoutMode) -> Option<(f64, f64
     Some(out)
 }
 
+/// Format a 0–1 map fraction as a rounded whole-number percent string for the
+/// `aria-value*` attributes (e.g. `0.667` → `"67"`).
+///
+/// Formats the rounded `f64` directly instead of casting `... as i64`. A float→int
+/// `as` cast lowers to the wasm `i64.trunc_sat_f64_s` instruction, which the
+/// release `wasm-opt -Oz` pass rejects because Trunk does not enable the
+/// non-trapping float-to-int feature; float formatting avoids that instruction
+/// while producing the identical integer text.
+fn pct_str(frac: f64) -> String {
+    format!("{}", (frac * 100.0).round())
+}
+
 /// Draggable divider between the map and detail panes.
 ///
 /// Renders a `role="separator"` div that resizes the two panes via pointer drag,
@@ -285,26 +297,26 @@ pub fn Splitter(
 
     // aria-valuemin as a percent: the lowest reachable map fraction (raw=0 clamped
     // to the map floor) given the last measurement; 0 before first measure.
-    let value_min_pct = move || -> i64 {
+    let value_min_pct = move || -> String {
         let lay = layout.get();
         match measured.get() {
             Some((axis, gutter)) => {
                 let (min1, min2) = floors_for(lay);
-                (clamp_split_ratio(0.0, axis, gutter, min1, min2) * 100.0).round() as i64
+                pct_str(clamp_split_ratio(0.0, axis, gutter, min1, min2))
             }
-            None => 0,
+            None => "0".to_string(),
         }
     };
     // aria-valuemax as a percent: the highest reachable map fraction (raw=1 clamped
     // to leave the detail floor); 100 before first measure.
-    let value_max_pct = move || -> i64 {
+    let value_max_pct = move || -> String {
         let lay = layout.get();
         match measured.get() {
             Some((axis, gutter)) => {
                 let (min1, min2) = floors_for(lay);
-                (clamp_split_ratio(1.0, axis, gutter, min1, min2) * 100.0).round() as i64
+                pct_str(clamp_split_ratio(1.0, axis, gutter, min1, min2))
             }
-            None => 100,
+            None => "100".to_string(),
         }
     };
 
@@ -323,7 +335,7 @@ pub fn Splitter(
             aria-valuemax=value_max_pct
             aria-valuenow=move || {
                 let lay = layout.get();
-                (active_signal(lay).get() * 100.0).round() as i64
+                pct_str(active_signal(lay).get())
             }
             on:pointerdown=move |ev: web_sys::PointerEvent| {
                 // The gutter div itself is current_target.
