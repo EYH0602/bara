@@ -9,13 +9,19 @@
 //! See <https://github.com/ARA-Labs/ara-cli>.
 
 mod claims;
-mod evidence;
 pub mod layout;
 pub mod manifest;
-mod paper;
 mod parse;
 pub mod report;
 mod schema;
+// The `PAPER.md` / `logic/*` / `evidence/` readers are consumed only by the
+// native `parse_dir`; gating them keeps the wasm client build (which only
+// deserializes the already-built manifest) free of dead-code warnings.
+#[cfg(feature = "native")]
+mod evidence;
+#[cfg(feature = "native")]
+mod paper;
+#[cfg(feature = "native")]
 mod sections;
 
 pub use layout::{LayoutOptions, LayoutResult, NodePosition, Point, Rect};
