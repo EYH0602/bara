@@ -186,7 +186,11 @@ fn join_prose(body: &[&str]) -> Option<String> {
         .iter()
         .map(|l| l.trim())
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .map(|l| l.strip_prefix("- ").or_else(|| l.strip_prefix("* ")).unwrap_or(l))
+        .map(|l| {
+            l.strip_prefix("- ")
+                .or_else(|| l.strip_prefix("* "))
+                .unwrap_or(l)
+        })
         .collect();
     join_lines(collected)
 }
@@ -411,7 +415,10 @@ mod tests {
 - **Derived from**: O1, O2
 ";
         let p = parse_problem(md);
-        assert_eq!(p.observations, vec!["O1: Networks forget", "O2: Quadratic growth"]);
+        assert_eq!(
+            p.observations,
+            vec!["O1: Networks forget", "O2: Quadratic growth"]
+        );
         assert_eq!(p.gaps, vec!["G1: No linear scaling"]);
         assert_eq!(p.insights, vec!["give direct access to previous outputs."]);
         assert!(p.statement.is_none());
@@ -429,7 +436,10 @@ mod tests {
         let p = parse_problem(md);
         assert_eq!(
             p.observations,
-            vec!["O1: sample-specific masks exist", "O2: shared masks cause positive loss"]
+            vec![
+                "O1: sample-specific masks exist",
+                "O2: shared masks cause positive loss"
+            ]
         );
         assert_eq!(p.gaps, vec!["G1: no sample-level adaptation"]);
     }
@@ -482,8 +492,14 @@ A move drives levels_completed up by 1.
             cc.notation.as_deref(),
             Some("CompoNet with modules $\\{\\pi^{(1)}, \\ldots, \\pi^{(n)}\\}$")
         );
-        assert_eq!(cc.definition.as_deref(), Some("A growable modular network."));
-        assert_eq!(cc.boundary.as_deref(), Some("Requires known task boundaries."));
+        assert_eq!(
+            cc.definition.as_deref(),
+            Some("A growable modular network.")
+        );
+        assert_eq!(
+            cc.boundary.as_deref(),
+            Some("Requires known task boundaries.")
+        );
         assert_eq!(cc.related, vec!["Policy Module", "ProgressiveNet", "CRL"]);
     }
 

@@ -1,0 +1,15 @@
+tree:
+  - id: N01
+    type: question
+    title: Root question
+    children:
+      - id: N02
+        type: experiment
+        title: Bind C01
+        result: r
+        evidence: ["C01"]
+      - id: N03
+        type: experiment
+        title: Bind C05
+        result: r
+        evidence: ["C05"]

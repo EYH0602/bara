@@ -204,7 +204,23 @@ pub fn parse_dir(dir: &std::path::Path) -> Result<(Manifest, ParseReport), Parse
     // The base parse owns the Ok/Err contract; an error short-circuits here.
     let (mut manifest, mut report) = parse_sources(&tree_yaml, claims_md.as_deref())?;
     read_logic_layer(dir, &mut manifest, &mut report);
+    read_evidence_layer(dir, &mut manifest, &mut report);
     Ok((manifest, report))
+}
+
+/// Reads the optional `evidence/` layer into `manifest.exhibits`, then runs the
+/// two deterministic resolution passes (`node_exhibits`, `built_on`) over the
+/// assembled manifest. Absent evidence yields empty fields; every defect warns
+/// but never errors. Native only.
+#[cfg(feature = "native")]
+fn read_evidence_layer(dir: &std::path::Path, manifest: &mut Manifest, report: &mut ParseReport) {
+    use crate::evidence::{read_evidence, resolve_built_on, resolve_node_exhibits};
+
+    manifest.exhibits = read_evidence(dir, report);
+    manifest.node_exhibits =
+        resolve_node_exhibits(&manifest.nodes, &manifest.bindings, &manifest.exhibits);
+    manifest.built_on =
+        resolve_built_on(&manifest.nodes, &manifest.bindings, &manifest.related_work);
 }
 
 /// Reads the optional logic-section files into `manifest`, appending reader
@@ -231,10 +247,7 @@ fn read_logic_layer(dir: &std::path::Path, manifest: &mut Manifest, report: &mut
         let concepts = parse_concepts(&md);
         for c in &concepts {
             if c.definition.is_none() {
-                report.warn(
-                    format!("concepts[{}]", c.term),
-                    "concept has no definition",
-                );
+                report.warn(format!("concepts[{}]", c.term), "concept has no definition");
             }
         }
         manifest.concepts = concepts;
@@ -244,10 +257,7 @@ fn read_logic_layer(dir: &std::path::Path, manifest: &mut Manifest, report: &mut
         let related_work = parse_related_work(&md);
         for r in &related_work {
             if r.doi.is_none() {
-                report.warn(
-                    format!("related_work[{}]", r.id),
-                    "related work has no DOI",
-                );
+                report.warn(format!("related_work[{}]", r.id), "related work has no DOI");
             }
         }
         manifest.related_work = related_work;
@@ -835,11 +845,9 @@ tree:
         let (m, report) = parse_sources(yaml, None).expect("ok");
         assert!(report.is_ok());
         assert!(
-            m.links
-                .iter()
-                .any(|l| l.kind == LinkKind::DependsOn
-                    && l.from == NodeId::new("N03")
-                    && l.to == NodeId::new("N02")),
+            m.links.iter().any(|l| l.kind == LinkKind::DependsOn
+                && l.from == NodeId::new("N03")
+                && l.to == NodeId::new("N02")),
             "sibling cross-edge must be kept"
         );
     }

@@ -24,10 +24,7 @@ pub fn parse_paper(md: &str) -> (Option<PaperMeta>, Vec<String>) {
     match extract_frontmatter(md) {
         Some(yaml) => match serde_saphyr::from_str::<RawPaper>(yaml) {
             Ok(raw) => (Some(raw.into_meta()), Vec::new()),
-            Err(e) => (
-                None,
-                vec![format!("malformed frontmatter YAML: {e}")],
-            ),
+            Err(e) => (None, vec![format!("malformed frontmatter YAML: {e}")]),
         },
         None => {
             // No frontmatter fence: recover the title from the first `# H1`.
@@ -206,7 +203,10 @@ Body prose.
         let (paper, warns) = parse_paper(md);
         assert!(warns.is_empty());
         let p = paper.expect("some");
-        assert_eq!(p.title.as_deref(), Some("World-Model ARA for ARC-AGI-3 ls20"));
+        assert_eq!(
+            p.title.as_deref(),
+            Some("World-Model ARA for ARC-AGI-3 ls20")
+        );
         assert!(p.authors.is_empty());
         assert!(p.year.is_none());
     }

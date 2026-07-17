@@ -88,7 +88,14 @@ fn pivot_deadend_snapshot() {
 fn pivot_deadend_has_no_field_warnings() {
     let yaml = read("synthetic/pivot_deadend.yaml");
     let (_manifest, report) = parse_sources(&yaml, None).expect("ok");
-    let widened = ["hypothesis", "failure_mode", "lesson", "from", "to", "trigger"];
+    let widened = [
+        "hypothesis",
+        "failure_mode",
+        "lesson",
+        "from",
+        "to",
+        "trigger",
+    ];
     for w in report.warnings() {
         for field in widened {
             assert!(
@@ -158,8 +165,10 @@ fn missing_dir_is_clean_error() {
 }
 
 /// Full snapshot over a real artifact: locks the logic-section fields
-/// (`paper`/`problem`/`concepts`/`related_work`/`recipes`). The evidence-derived
-/// fields (`exhibits`/`built_on`/`node_exhibits`) stay empty for this slice.
+/// (`paper`/`problem`/`concepts`/`related_work`/`recipes`) plus the evidence
+/// layer (`exhibits`/`built_on`/`node_exhibits`). Exhibit and recipe bodies are
+/// redacted — they are large verbatim blobs; the snapshot locks structure and
+/// linkage, not the body text.
 #[test]
 #[cfg(feature = "native")]
 fn self_composing_policies_snapshot() {
@@ -172,14 +181,183 @@ fn self_composing_policies_snapshot() {
         Some("Self-Composing Policies for Scalable Continual Reinforcement Learning")
     );
     assert_eq!(paper.year.as_deref(), Some("2024"));
-    assert_eq!(manifest.concepts.first().map(|c| c.term.as_str()), Some("CompoNet"));
+    assert_eq!(
+        manifest.concepts.first().map(|c| c.term.as_str()),
+        Some("CompoNet")
+    );
     assert_eq!(manifest.related_work.len(), 9);
     assert_eq!(manifest.related_work[0].id, "RW01");
     assert_eq!(manifest.recipes.len(), 4); // solution/*.md, sorted
-    assert!(manifest.exhibits.is_empty());
-    assert!(manifest.built_on.is_empty());
-    assert!(manifest.node_exhibits.is_empty());
-    insta::assert_json_snapshot!("self_composing_policies_manifest", manifest);
+    // Evidence layer is now populated: 5 tables + 4 figures.
+    assert_eq!(manifest.exhibits.len(), 9);
+    assert!(!manifest.node_exhibits.is_empty());
+    assert!(!manifest.built_on.is_empty());
+
+    // DoD anchor: N07's node→exhibit resolution is EXACTLY the two scalability
+    // exhibits, and its node→RW resolution includes RW01 and RW09.
+    let n07_exhibits: Vec<&str> = manifest
+        .node_exhibits
+        .iter()
+        .filter(|ne| ne.node.as_str() == "N07")
+        .map(|ne| ne.exhibit.as_str())
+        .collect();
+    assert_eq!(
+        n07_exhibits,
+        vec!["fig3_scalability", "figb1_memory_growth"],
+        "N07 node_exhibits must be exactly the two scalability exhibits"
+    );
+    let n07_rw: Vec<&str> = manifest
+        .built_on
+        .iter()
+        .filter(|b| b.node.as_str() == "N07")
+        .map(|b| b.related_work.as_str())
+        .collect();
+    assert!(
+        n07_rw.contains(&"RW01") && n07_rw.contains(&"RW09"),
+        "N07 built_on must include RW01 and RW09, got: {n07_rw:?}"
+    );
+
+    insta::assert_json_snapshot!("self_composing_policies_manifest", manifest, {
+        ".exhibits[].body" => "[exhibit body redacted]",
+        ".recipes[].body" => "[recipe body redacted]",
+    });
+}
+
+/// End-to-end over synthetic header-variant fixtures: a single artifact whose
+/// `evidence/README.md` mixes the reordered `Claims`, `Key refs`, no-claims-
+/// column (`What it shows`), backtick-file-cell, dual-ext, and `Used by` fact
+/// shapes. Confirms the column-name resolver extracts the right ids/claims and
+/// that resolution wires nodes to exhibits and related work.
+#[test]
+#[cfg(feature = "native")]
+fn evidence_header_variants_resolve_end_to_end() {
+    let path = fixtures().join("evidence/e2e-variants");
+    let (manifest, report) = ara_core::parse_dir(&path).expect("ok");
+    assert!(report.is_ok(), "must not error: {report}");
+
+    let by_id = |id: &str| manifest.exhibits.iter().find(|e| e.id == id);
+    // Backtick file cell + reordered Claims column → C01; index source wins.
+    let backtick = by_id("t_backtick").expect("t_backtick exhibit");
+    assert_eq!(backtick.claims, vec![ara_core::ClaimId::new("C01")]);
+    assert_eq!(backtick.source.as_deref(), Some("Table 1")); // index beats body
+    // Key refs column → C05.
+    let keyrefs = by_id("t_keyrefs").expect("t_keyrefs exhibit");
+    assert_eq!(keyrefs.claims, vec![ara_core::ClaimId::new("C05")]);
+    assert_eq!(
+        keyrefs.description.as_deref(),
+        Some("Key-refs carries claims")
+    );
+    // Dual-ext id + no claims column → claims fall back to body `Supports:` C01.
+    let dualext = by_id("f_dualext").expect("f_dualext exhibit");
+    assert_eq!(dualext.claims, vec![ara_core::ClaimId::new("C01")]);
+
+    // Resolution: N02 (binds C01) → t_backtick + f_dualext; N03 (binds C05) → t_keyrefs.
+    let node_ex = |node: &str| -> Vec<&str> {
+        manifest
+            .node_exhibits
+            .iter()
+            .filter(|ne| ne.node.as_str() == node)
+            .map(|ne| ne.exhibit.as_str())
+            .collect()
+    };
+    let n02 = node_ex("N02");
+    assert!(
+        n02.contains(&"t_backtick") && n02.contains(&"f_dualext"),
+        "got: {n02:?}"
+    );
+    assert_eq!(node_ex("N03"), vec!["t_keyrefs"]);
+
+    // built_on: N02 → RW01 (C01), N03 → RW02 (C05).
+    let built = |node: &str| -> Vec<&str> {
+        manifest
+            .built_on
+            .iter()
+            .filter(|b| b.node.as_str() == node)
+            .map(|b| b.related_work.as_str())
+            .collect()
+    };
+    assert_eq!(built("N02"), vec!["RW01"]);
+    assert_eq!(built("N03"), vec!["RW02"]);
+}
+
+/// Malformed/partial evidence WARNS but never errors: an index row pointing at a
+/// missing body file warns; a body file with no index row warns; and a node
+/// bound to a claim no exhibit carries yields an EMPTY node_exhibits (no error).
+#[test]
+#[cfg(feature = "native")]
+fn evidence_malformed_warns_not_fatal() {
+    let path = fixtures().join("evidence/malformed");
+    let (manifest, report) = ara_core::parse_dir(&path).expect("Ok despite malformed evidence");
+    assert!(
+        report.is_ok(),
+        "malformed evidence must not error: {report}"
+    );
+
+    // Bodies present → exhibits; the ghost index row is NOT an exhibit.
+    assert!(manifest.exhibits.iter().any(|e| e.id == "present"));
+    assert!(manifest.exhibits.iter().any(|e| e.id == "orphan"));
+    assert!(!manifest.exhibits.iter().any(|e| e.id == "ghost"));
+
+    // Index row with no body file → warning.
+    assert!(
+        report
+            .warnings()
+            .iter()
+            .any(|w| w.path.contains("ghost") && w.message.contains("no body")),
+        "expected missing-file warning, got: {report}"
+    );
+    // Body file with no index row → warning.
+    assert!(
+        report
+            .warnings()
+            .iter()
+            .any(|w| w.path.contains("orphan") && w.message.contains("no index row")),
+        "expected orphan-body warning, got: {report}"
+    );
+    // N01 binds C09, which no exhibit carries → empty node_exhibits, no error.
+    assert!(
+        manifest.node_exhibits.is_empty(),
+        "no exhibit carries C09 → node_exhibits must be empty, got: {:?}",
+        manifest.node_exhibits
+    );
+}
+
+/// GAP-1: an OLD manifest JSON lacking the new evidence/logic fields still
+/// deserializes (serde defaults), and a fully-populated manifest round-trips
+/// serialize→deserialize→equal.
+#[test]
+fn manifest_forward_and_round_trip_compat() {
+    use ara_core::Manifest;
+
+    // OLD-shape JSON: only the four original vectors, none of the new fields.
+    let old = r#"{
+        "nodes": [],
+        "links": [],
+        "bindings": [],
+        "claims": []
+    }"#;
+    let m: Manifest = serde_json::from_str(old).expect("old manifest deserializes via defaults");
+    assert!(m.paper.is_none());
+    assert!(m.exhibits.is_empty());
+    assert!(m.built_on.is_empty());
+    assert!(m.node_exhibits.is_empty());
+    assert!(m.related_work.is_empty());
+    assert!(m.concepts.is_empty());
+    assert!(m.problem.is_none());
+    assert!(m.recipes.is_empty());
+
+    // A fully-populated manifest round-trips exactly.
+    let path = fixtures().join("evidence/e2e-variants");
+    #[cfg(feature = "native")]
+    {
+        let (populated, _) = ara_core::parse_dir(&path).expect("ok");
+        assert!(!populated.exhibits.is_empty());
+        assert!(!populated.node_exhibits.is_empty());
+        let json = serde_json::to_string(&populated).expect("serialize");
+        let back: Manifest = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(populated, back, "populated manifest must round-trip equal");
+    }
+    let _ = path;
 }
 
 /// Present-but-malformed logic files WARN (never error): parse_dir still returns

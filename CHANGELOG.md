@@ -19,6 +19,17 @@ All notable changes to this project are documented here. The format follows
   empty) `exhibits`/`built_on`/`node_exhibits` fields, reserved for a later
   evidence/resolution task. Old manifests and artifacts lacking these files
   round-trip and serialize identically (all new fields skip when empty).
+- Parse the `evidence/` layer into `Manifest.exhibits` and resolve node→exhibit
+  (`node_exhibits`) and node→related-work (`built_on`) edges. `parse_dir` reads
+  `evidence/README.md` (a column-name-tolerant index that handles the eight real
+  header shapes, including reordered, `Key refs`, `Used by`, and no-claims-column
+  tables) plus every `evidence/figures/*.md` and `evidence/tables/*.md` body
+  (stored verbatim). Each exhibit's supported claims come from its index row or,
+  when the index has none, from an inline `Supports: C##` line in the body. The
+  two resolution passes link a node to an exhibit or related-work entry when
+  their claim sets intersect, iterating in source order and deduplicating. The
+  reader is tolerant — an absent `evidence/` dir is skipped silently, and a
+  missing body file or unindexed body warns without failing the parse.
 
 ## [0.1.6] - 2026-07-13
 
