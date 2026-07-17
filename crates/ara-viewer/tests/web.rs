@@ -20,6 +20,7 @@ wasm_bindgen_test_configure!(run_in_browser);
 use std::collections::HashSet;
 
 use ara_viewer::{
+    PaperHeader,
     detail::DetailPane,
     replay::{ReplayBar, ReplayState, install_arrow_key_listener, node_order},
     scene::{GraphRenderer, GraphView, LayoutView, SvgRenderer},
@@ -747,6 +748,210 @@ fn search_query_dims_non_matching_nodes() {
     assert!(
         n01_class.contains("dimmed"),
         "non-matching node N01 must be dimmed, got class: {n01_class}"
+    );
+}
+
+// ── Paper-header fixtures ─────────────────────────────────────────────────────
+//
+// A manifest carrying a full PaperMeta (title/authors/venue/year/abstract), and
+// one with no `paper` key at all (→ paper defaults to None). Nodes are empty:
+// the header reads only `manifest.paper`, so the node list is irrelevant here.
+const PAPER_FIXTURE_JSON: &str = r#"{
+  "nodes": [],
+  "links": [],
+  "bindings": [],
+  "claims": [],
+  "paper": {
+    "title": "Attention Is All You Need",
+    "authors": ["A. Vaswani", "N. Shazeer"],
+    "year": "2017",
+    "venue": "NeurIPS",
+    "doi": null,
+    "abstract": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks.",
+    "keywords": []
+  }
+}"#;
+
+const NO_PAPER_FIXTURE_JSON: &str = r#"{
+  "nodes": [],
+  "links": [],
+  "bindings": [],
+  "claims": []
+}"#;
+
+const NO_ABSTRACT_PAPER_FIXTURE_JSON: &str = r#"{
+  "nodes": [],
+  "links": [],
+  "bindings": [],
+  "claims": [],
+  "paper": {
+    "title": "A Terse Artifact",
+    "authors": ["A. Author"],
+    "year": "2024",
+    "venue": "ArXiv",
+    "doi": null,
+    "abstract": null,
+    "keywords": []
+  }
+}"#;
+
+// ── Test: paper header renders title, byline, and a collapsed Abstract ─────────
+
+/// Mounts `PaperHeader` with a `LoadState::Loaded` manifest carrying a full
+/// `PaperMeta`. The header must show the title `<h1>`, the joined
+/// authors/venue/year byline, and a collapsed `<details class="paper-abstract">`
+/// (no `open` attribute) with an "Abstract" summary.
+#[wasm_bindgen_test]
+fn paper_header_renders_title_byline_and_collapsed_abstract() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest = parse_manifest(PAPER_FIXTURE_JSON).expect("paper fixture must parse");
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <PaperHeader load_state=load_state /> }
+    });
+
+    // Title in the <h1>.
+    let h1 = container
+        .query_selector("h1")
+        .unwrap()
+        .expect("paper header must render an <h1>");
+    assert_eq!(
+        h1.dyn_ref::<HtmlElement>().unwrap().inner_text(),
+        "Attention Is All You Need",
+        "h1 must carry the paper title"
+    );
+
+    // Byline: authors joined with ", ", then "· Venue Year".
+    let meta = container
+        .query_selector("span.paper-meta")
+        .unwrap()
+        .expect("byline .paper-meta must be present")
+        .dyn_into::<HtmlElement>()
+        .unwrap();
+    let meta_text = meta.inner_text();
+    assert!(
+        meta_text.contains("A. Vaswani, N. Shazeer"),
+        "byline must join authors with ', ', got: {meta_text:?}"
+    );
+    assert!(
+        meta_text.contains("NeurIPS 2017"),
+        "byline must show 'Venue Year', got: {meta_text:?}"
+    );
+
+    // Abstract lives in a <details> that is collapsed (no `open` attribute).
+    let details = container
+        .query_selector("details.paper-abstract")
+        .unwrap()
+        .expect("abstract must render in a <details class='paper-abstract'>");
+    assert!(
+        details.get_attribute("open").is_none(),
+        "abstract <details> must be collapsed by default (no `open`)"
+    );
+    let summary = details
+        .query_selector("summary")
+        .unwrap()
+        .expect("abstract <details> must have a <summary>")
+        .dyn_into::<HtmlElement>()
+        .unwrap();
+    assert_eq!(
+        summary.inner_text(),
+        "Abstract",
+        "summary must read 'Abstract'"
+    );
+}
+
+// ── Test: manifest without a paper falls back to the ARA Viewer brand ─────────
+
+/// With `paper = None`, `PaperHeader` must fall back to the brand: an "ARA
+/// Viewer" `<h1>` + the `.header-subtitle`, and render NO paper byline/abstract.
+#[wasm_bindgen_test]
+fn paper_header_falls_back_to_brand_without_paper() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest = parse_manifest(NO_PAPER_FIXTURE_JSON).expect("no-paper fixture must parse");
+    assert!(manifest.paper.is_none(), "fixture must have no paper");
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <PaperHeader load_state=load_state /> }
+    });
+
+    let h1 = container
+        .query_selector("h1")
+        .unwrap()
+        .expect("brand header must render an <h1>");
+    assert_eq!(
+        h1.dyn_ref::<HtmlElement>().unwrap().inner_text(),
+        "ARA Viewer",
+        "fallback h1 must read 'ARA Viewer'"
+    );
+    assert!(
+        container
+            .query_selector("span.header-subtitle")
+            .unwrap()
+            .is_some(),
+        "fallback must render the .header-subtitle brand tagline"
+    );
+    // No paper-specific chrome.
+    assert!(
+        container
+            .query_selector("span.paper-meta")
+            .unwrap()
+            .is_none(),
+        "brand fallback must NOT render a paper byline"
+    );
+    assert!(
+        container
+            .query_selector("details.paper-abstract")
+            .unwrap()
+            .is_none(),
+        "brand fallback must NOT render an abstract"
+    );
+}
+
+// ── Test: titled paper with no abstract renders header but no <details> ────────
+
+/// A titled `PaperMeta` whose `abstract` is absent must still render the paper
+/// header (title + byline) but NO `<details class="paper-abstract">`.
+#[wasm_bindgen_test]
+fn paper_header_without_abstract_omits_details() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest =
+        parse_manifest(NO_ABSTRACT_PAPER_FIXTURE_JSON).expect("no-abstract fixture must parse");
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <PaperHeader load_state=load_state /> }
+    });
+
+    let h1 = container
+        .query_selector("h1")
+        .unwrap()
+        .expect("paper header must render an <h1>");
+    assert_eq!(
+        h1.dyn_ref::<HtmlElement>().unwrap().inner_text(),
+        "A Terse Artifact",
+        "h1 must carry the paper title"
+    );
+    assert!(
+        container
+            .query_selector("span.paper-meta")
+            .unwrap()
+            .is_some(),
+        "byline must still render"
+    );
+    assert!(
+        container
+            .query_selector("details.paper-abstract")
+            .unwrap()
+            .is_none(),
+        "no abstract → no <details>"
     );
 }
 

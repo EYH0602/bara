@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Viewer paper header: title, authors, venue/year, and a collapsible Abstract
+  from `PAPER.md`. When the loaded manifest carries a titled `PaperMeta` the app
+  header shows the paper metadata (Abstract collapsed by default); otherwise it
+  falls back to the "ARA Viewer" brand.
 - Model `pivot` nodes (`from`/`to`/`trigger`) and the
   `hypothesis`/`failure_mode`/`lesson` fields on `dead_end` nodes, which
   previously degraded to unknown-field warnings.

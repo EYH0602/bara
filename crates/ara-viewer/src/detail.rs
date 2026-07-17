@@ -145,7 +145,9 @@ pub fn detail_model(node: &Node, manifest: &Manifest) -> DetailModel {
 ///   `("alternatives", alternatives)` if non-empty; omit None/empty
 /// - `DeadEnd { hypothesis, failure_mode, lesson, why_failed }` →
 ///   `("hypothesis", hypothesis?)`, `("failure mode", failure_mode?)` [primary],
-///   `("lesson", lesson?)`, `("why failed", why_failed?)`; omit None
+///   `("lesson", lesson?)`, `("why failed", why_failed?)` [primary only when
+///   `failure_mode` is absent — the legacy field is promoted so there is still
+///   an accented block]; omit None
 /// - `Insight`   → none
 /// - `Pivot { from, to, trigger }` → `("from", from?)`, `("to", to?)`,
 ///   `("trigger", trigger?)` [primary]; omit None
@@ -225,10 +227,13 @@ fn typed_fields_for(node: &Node) -> Vec<TypedField> {
                 });
             }
             if let Some(w) = why_failed {
+                // `failure_mode` is the modern primary field; when a node carries
+                // only the legacy `why_failed`, promote it so the pane still has a
+                // primary (accented) block instead of none.
                 fields.push(TypedField {
                     label: "why failed",
                     value: FieldValue::Text(w.clone()),
-                    is_primary: false,
+                    is_primary: failure_mode.is_none(),
                 });
             }
             fields
@@ -554,8 +559,9 @@ mod tests {
 
     // ── DeadEnd primary ──────────────────────────────────────────────────────
 
-    /// `DeadEnd` with `why_failed` → single field labeled "why failed",
-    /// `is_primary == true`.
+    /// `DeadEnd` with only the legacy `why_failed` (no `failure_mode`) → single
+    /// field labeled "why failed", promoted to `is_primary == true` so the pane
+    /// still has an accented block.
     #[test]
     fn dead_end_primary_why_failed() {
         let node = Node {
@@ -570,7 +576,10 @@ mod tests {
         let m = detail_model(&node, &bare_manifest());
         assert_eq!(m.typed_fields.len(), 1);
         assert_eq!(m.typed_fields[0].label, "why failed");
-        assert!(!m.typed_fields[0].is_primary, "why failed is NOT primary");
+        assert!(
+            m.typed_fields[0].is_primary,
+            "why failed is primary when failure_mode is absent"
+        );
         assert_eq!(
             m.typed_fields[0].value,
             FieldValue::Text("Gradient vanished.".to_string())
