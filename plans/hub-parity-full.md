@@ -12,16 +12,49 @@ node **N07** selected) shows the gap concretely.
 
 ### What the hub shows and we don't
 
-**Per-node detail pane.** Hub order for N07: title · kind · description ·
-**BUILT ON** · **RESULT** · **WHY** · **ARTIFACT**. We render title · kind ·
-description · typed fields · evidence notes + claims · sources. Missing:
+**Per-node detail pane.** Corrected against a screenshot of the live hub with N07
+selected (`~/.gstack/.../designs/hub-parity-20260716/`, design review 2026-07-16).
+The **actual** hub order is: kind badge + support pill (`EXPLICIT`) + title →
+**REASONING** (generated narrative prose) → **WHAT IT DID** (= the node `result`) →
+evidence chips (`Appendix B`) → **BUILT ON** (RW chips) → RESULT (figures/tables) →
+ARTIFACT. The earlier draft order (`BUILT ON · RESULT · WHY · ARTIFACT`) was wrong,
+and "WHY" is not a labeled hub section — the labeled sections are REASONING /
+WHAT IT DID / BUILT ON. We render title · kind · description · typed fields ·
+evidence notes + claims · sources. Missing:
 
 | Hub section | Source of truth | Our status |
 |---|---|---|
+| **REASONING** | **generated narrative prose** (not in any source file) | ⚠️ **Conflicts with our founding constraint** — see D1 below. Not a straight "build it" item. |
+| **WHAT IT DID** | node `result` field | ✅ Have it (Experiment `result` typed field) — just relabel. |
 | **RESULT** | `evidence/figures/*.md` + `evidence/tables/*.md`, rendered as full markdown tables | ❌ We never read `evidence/`. Figure refs (`"Figure 3"`) land in `evidence_notes` as bare strings. No markdown-table rendering. |
 | **BUILT ON** | `logic/related_work.md` (RW01…), linked node → claim → RW via each RW's `Claims affected` | ❌ No RW model; file never read. |
-| **WHY** | claim (e.g. C01) | ✅ Have it (claims block). |
 | **ARTIFACT** | pointer into `src/code/…` | ❌ No code-pointer linkage. |
+
+> **D1 (design review, blocking).** The hub's **REASONING** block is LLM-generated
+> narrative prose baked into the hub at publish time. Our README thesis is the
+> opposite: *"Renders the YAML directly — never calls an LLM at view time … missing
+> upstream prose degrades gracefully to the structured fields — it is never faked at
+> view time."* So "full parity" as literally stated is **impossible without breaking
+> the product's core promise**. Resolution options: **(a)** drop REASONING, keep
+> WHAT IT DID (the structured `result`) as the top block — this is the honest,
+> on-brand choice and the recommended default; **(b)** render REASONING *only* if a
+> future schema carries it as a stored field (inert until then, like the other
+> deferred slots); **(c)** change the product thesis (not recommended — it's the
+> headline differentiator). Lock D1 before any per-node rendering work.
+
+> **D2 (design review, blocking) — which reference is canonical?** There are **three
+> official renderings and they disagree visually**:
+> - baked `trace/exploration_tree.html` (in every artifact): cool grays, Inter,
+>   **per-kind colours** (question=blue, experiment=orange, decision=green,
+>   dead_end=red, pivot=purple), no panels, no RESULT/BUILT ON.
+> - the live hub: serif headings, REASONING narrative, four modal side-panels.
+> - our viewer: warm-cream vendored tokens, **glyph-not-colour** (a deliberate
+>   colour-blind-safe choice, README + T-DESIGN-TOKENS), sans + mono.
+>
+> "Matching the hub" silently picks reference #2 and abandons the accessibility
+> stance in #3. Decide: keep our warm-cream + glyph-only skin and port only the hub's
+> *structure* (recommended — preserves the a11y differentiator), or adopt the hub skin
+> wholesale (drops glyph-only). This governs every colour/type/spacing choice below.
 
 **Global header panels** — all four missing. These are exactly the "inert" slots
 already reserved (commented) in `crates/ara-viewer/src/detail.rs:386`:
@@ -136,21 +169,61 @@ serde-defaulted so old manifests round-trip (as `isolated`/`pos` already do).
 
 ### Viewer (`ara-viewer`)
 
-6. **Un-inert the reserved slots** in `detail.rs` and add:
-   - Per-node **BUILT ON** (RW chips) and **RESULT** (figure/table blocks with
-     rendered tables), in the hub's section order.
+6. **Un-inert the reserved slots** in `detail.rs` and add, **in the corrected hub
+   order** (D1 governs whether REASONING appears): WHAT IT DID (`result`, relabelled)
+   → evidence chips → per-node **BUILT ON** (RW chips) → **RESULT** (figure/table
+   blocks with rendered tables) → ARTIFACT. Reuse existing `.block` / `.block.reason`
+   styling and the `kind_meta` glyph source; do not invent new chrome.
    - **ARTIFACT** pointer (deferred sub-item if code-linkage data isn't modeled
      — see below).
-7. **Four header panels** as overlays (Context / Glossary / Dependencies /
-   Recipes) with counts, matching #7's inert design. Reuse the overlay pattern
-   the resizable-divider work already established.
-8. **Paper header** (title/authors/venue + Abstract `<details>`).
-9. **Regen the embedded viewer bundle** (`scripts/embed-viewer.sh`) — the
-   `viewer-embed-fresh` CI gate will fail otherwise.
+7. **Four header panels** (Context / Glossary / Dependencies / Recipes). **There is
+   no existing "overlay pattern" to reuse** — the resizable divider is a splitter, not
+   a modal. This is a **new component** and must be specced, not hand-waved. From the
+   hub screenshot, each panel is:
+   - a **centered modal overlay** (not a side dock), max-width ~880px, scrim behind,
+     opened from the labelled header buttons that carry a **live count**
+     (`Glossary 12`, `Dependencies 9`, `Recipes 28` — counts are a required
+     affordance, not decoration; a 0 count hides the button).
+   - has its **own filter/search box** (Glossary shows `filter…`) scoped to that
+     panel's items, plus an **`✕ Esc`** affordance.
+   - **Accessibility contract (mandatory, this is a headline project feature):**
+     `role="dialog"` + `aria-modal`, focus moves into the panel on open, **focus is
+     trapped**, **Esc closes**, focus **returns to the invoking button** on close,
+     scrim click closes. Without this the four modals regress the project's stated
+     keyboard/ARIA promise.
+   - Glossary/Concepts additionally render **term cross-reference chips** (dotted-
+     underline concept links), a `mentions N07 N08…` node-chip row, and **LaTeX
+     notation** (π^(k), Φ^{k;s}). Math rendering is its own decision — see D3.
+8. **Paper header** (title/authors/venue + Abstract `<details>`), warm-cream skin
+   per D2 (do not import the hub's serif unless D2 says so).
+9. **Interaction states — specify for every new surface (Pass-1 gap):**
+   - **Empty:** artifact lacks `related_work.md` → BUILT ON + Dependencies button
+     both absent (not an empty box). Node with no `result`/evidence → no RESULT block.
+     Matches the hub: N01 (a bare question) shows none of these sections.
+   - **Partial:** node bound to a claim but no evidence file resolves → show WHY/claim,
+     omit RESULT silently.
+   - **Error:** malformed `concepts.md` → warn (never fatal), panel button hidden.
+   - **Loading:** hub `/api/manifest` in flight → existing load-state placeholder;
+     panels disabled until loaded.
+10. **Responsive (Pass-5 gap):** <800px the layout already single-columns and hides
+    the gutter — the four modals must go **full-screen** at that width, and **RESULT
+    tables must scroll horizontally inside their block** (wide GFM tables are a
+    mobile horizontal-scroll trap for the whole page otherwise). Define ≥800px and
+    <800px behaviour for each panel + the RESULT tables.
+11. **Regen the embedded viewer bundle** (`scripts/embed-viewer.sh`) — the
+    `viewer-embed-fresh` CI gate will fail otherwise.
+
+> **D3 (design review).** Concepts/Recipes carry LaTeX (`$\pi^{(k)}$`,
+> `$\Phi^{k;s}$`). Options: **(a)** ship a KaTeX-style renderer (adds JS/wasm weight —
+> tension with the sub-MB bundle gate); **(b)** render raw `$…$` as monospace inert
+> text (honest, cheap, ugly for heavy math); **(c)** defer math-heavy panels
+> (Recipes/Glossary) to a later slice and ship Context/Dependencies first. Recommend
+> **(b)** for v1 with a follow-up TODO — keeps the bundle gate green and nothing is
+> faked. Lock before slice 5.
 
 ### Hub mode
 
-10. **T-HUB-FIGURES**: once figures render, image `src` must resolve under
+12. **T-HUB-FIGURES**: once figures render, image `src` must resolve under
     `<base href="/a/{id}/">` and the hub needs `/a/{id}/api/figure/*`. The
     sampled artifacts use **markdown tables, not image files**, so image serving
     may not even be on the critical path — verify. Build figure-image serving in
@@ -197,8 +270,64 @@ extends the `insta` snapshots and the `corpus_no_panic` net. Run
 
 ## Definition of done
 
-`ara serve` on `paperbench/self-composing-policies` renders, for N07: paper
-header + abstract, BUILT ON (RW01/RW09), RESULT (fig3 + figB.1 tables), WHY
-(C01), and the four populated header panels (Context, Glossary 12,
-Dependencies 9, Recipes 28) — matching the hub. Corpus sweep emits zero
-dead-end-field warnings. All snapshots updated; embedded bundle fresh.
+`ara serve` on `paperbench/self-composing-policies` renders, for N07, in the
+corrected hub order: paper header + abstract, WHAT IT DID (`result`), evidence
+chips, BUILT ON (RW01/RW09), RESULT (fig3 + figB.1 tables), and the four populated
+header panels (Context, Glossary 12, Dependencies 9, Recipes 28) — **in our
+warm-cream + glyph-only skin (D2), with REASONING handled per D1**. Every new
+surface has its empty/partial/error/loading state (Pass 1) and its <800px behaviour
+(Pass 5). The four panels satisfy the modal a11y contract (focus-trap, Esc,
+return-focus). Corpus sweep emits zero dead-end-field warnings. All snapshots
+updated; embedded bundle fresh.
+
+## Design decisions to lock before implementation (from /plan-design-review)
+
+- **D1 — REASONING vs the no-LLM-at-view-time promise** (blocking). Recommend drop
+  REASONING, lead with WHAT IT DID.
+- **D2 — canonical reference / visual language** (blocking). Recommend keep our
+  warm-cream + glyph-only skin, port only the hub's *structure*.
+- **D3 — LaTeX rendering** in Glossary/Recipes. Recommend inert monospace `$…$` for
+  v1 + follow-up TODO.
+- **Section order corrected** to the live hub: WHAT IT DID → evidence → BUILT ON →
+  RESULT → ARTIFACT (REASONING gated on D1).
+- **Panels are a new modal component**, not a reuse of the divider; a11y contract is
+  mandatory.
+
+## GSTACK REVIEW REPORT
+
+Design review of `plans/hub-parity-full.md` — /plan-design-review, 2026-07-16.
+Calibrated against three captured references (live hub screenshots in
+`~/.gstack/projects/AmberLJC-ara-paperbench/designs/hub-parity-20260716/` +
+`/tmp/hub-parity-refs/`, the baked `trace/exploration_tree.html`, and the current
+warm-cream viewer). No `DESIGN.md`; tokens are vendored in
+`crates/ara-viewer/public/styles.css` (T-DESIGN-TOKENS open).
+
+| Dimension | Before | After edits | Note |
+|---|---|---|---|
+| Interaction state coverage | 2/10 | 8/10 | Added empty/partial/error/loading per surface (step 9) |
+| AI slop risk | 6/10 | 8/10 | Killed "reuse the overlay pattern" fiction; specced real modal |
+| Information architecture | 4/10 | 8/10 | Corrected section order against hub screenshot |
+| User journey | 5/10 | 7/10 | Panel counts promoted to required affordance |
+| Responsive | 1/10 | 7/10 | <800px full-screen modals + table horizontal-scroll (step 10) |
+| Accessibility | 1/10 | 8/10 | Modal focus-trap/Esc/return-focus contract now mandatory |
+| Visual system / language conflict | 3/10 | 7/10 | D2 forces a canonical-reference decision |
+| **Overall** | **6.5/10** | **~8/10 pending D1–D3** | Data layer was already strong; design layer now specced |
+
+Runs: 1 (inline). Status: issues_found → addressed in-plan.
+Findings: 3 blocking design decisions raised (D1 REASONING-vs-no-LLM,
+D2 canonical-reference/skin, D3 LaTeX), section order corrected, panels re-specced
+as a new modal component with a mandatory a11y contract, interaction states +
+responsive behaviour added.
+
+Design mockups: **not generated** — this is a parity task with three existing
+official reference renderings, so I captured the live hub as the pixel spec instead
+of inventing designs (more faithful than AI mockups here).
+
+VERDICT: Plan is materially stronger and safe to proceed **once D1–D3 are answered**.
+D1 and D2 are true blockers — they can invalidate whole slices (per-node rendering,
+every colour/type choice). Recommend answering all three before slice 2.
+
+**UNRESOLVED DECISIONS:**
+- D1 — REASONING block vs the "never call an LLM at view time" promise (recommend: drop REASONING, lead with WHAT IT DID).
+- D2 — canonical reference + visual language: keep warm-cream+glyph-only skin vs adopt hub skin (recommend: keep our skin, port structure only).
+- D3 — LaTeX rendering in Glossary/Recipes (recommend: inert monospace for v1).
