@@ -143,8 +143,12 @@ pub fn detail_model(node: &Node, manifest: &Manifest) -> DetailModel {
 /// - `Decision { choice, rationale, alternatives }` →
 ///   `("choice", choice?)`, `("rationale", rationale?)` [primary],
 ///   `("alternatives", alternatives)` if non-empty; omit None/empty
-/// - `DeadEnd { why_failed }` → `[("why failed", why_failed)]` if Some; mark primary
+/// - `DeadEnd { hypothesis, failure_mode, lesson, why_failed }` →
+///   `("hypothesis", hypothesis?)`, `("failure mode", failure_mode?)` [primary],
+///   `("lesson", lesson?)`, `("why failed", why_failed?)`; omit None
 /// - `Insight`   → none
+/// - `Pivot { from, to, trigger }` → `("from", from?)`, `("to", to?)`,
+///   `("trigger", trigger?)` [primary]; omit None
 /// - `Other`     → none
 fn typed_fields_for(node: &Node) -> Vec<TypedField> {
     match &node.fields {
@@ -192,12 +196,64 @@ fn typed_fields_for(node: &Node) -> Vec<TypedField> {
             fields
         }
 
-        NodeFields::DeadEnd { why_failed } => {
+        NodeFields::DeadEnd {
+            hypothesis,
+            failure_mode,
+            lesson,
+            why_failed,
+        } => {
             let mut fields = Vec::new();
+            if let Some(h) = hypothesis {
+                fields.push(TypedField {
+                    label: "hypothesis",
+                    value: FieldValue::Text(h.clone()),
+                    is_primary: false,
+                });
+            }
+            if let Some(fm) = failure_mode {
+                fields.push(TypedField {
+                    label: "failure mode",
+                    value: FieldValue::Text(fm.clone()),
+                    is_primary: true,
+                });
+            }
+            if let Some(l) = lesson {
+                fields.push(TypedField {
+                    label: "lesson",
+                    value: FieldValue::Text(l.clone()),
+                    is_primary: false,
+                });
+            }
             if let Some(w) = why_failed {
                 fields.push(TypedField {
                     label: "why failed",
                     value: FieldValue::Text(w.clone()),
+                    is_primary: false,
+                });
+            }
+            fields
+        }
+
+        NodeFields::Pivot { from, to, trigger } => {
+            let mut fields = Vec::new();
+            if let Some(f) = from {
+                fields.push(TypedField {
+                    label: "from",
+                    value: FieldValue::Text(f.clone()),
+                    is_primary: false,
+                });
+            }
+            if let Some(t) = to {
+                fields.push(TypedField {
+                    label: "to",
+                    value: FieldValue::Text(t.clone()),
+                    is_primary: false,
+                });
+            }
+            if let Some(t) = trigger {
+                fields.push(TypedField {
+                    label: "trigger",
+                    value: FieldValue::Text(t.clone()),
                     is_primary: true,
                 });
             }
@@ -496,6 +552,9 @@ mod tests {
     fn dead_end_primary_why_failed() {
         let node = Node {
             fields: NodeFields::DeadEnd {
+                hypothesis: None,
+                failure_mode: None,
+                lesson: None,
                 why_failed: Some("Gradient vanished.".to_string()),
             },
             ..make_node("N02", NodeKind::DeadEnd, NodeFields::Other)
@@ -503,19 +562,85 @@ mod tests {
         let m = detail_model(&node, &bare_manifest());
         assert_eq!(m.typed_fields.len(), 1);
         assert_eq!(m.typed_fields[0].label, "why failed");
-        assert!(m.typed_fields[0].is_primary);
+        assert!(!m.typed_fields[0].is_primary, "why failed is NOT primary");
         assert_eq!(
             m.typed_fields[0].value,
             FieldValue::Text("Gradient vanished.".to_string())
         );
     }
 
-    /// `DeadEnd` with `why_failed: None` → no typed fields.
+    /// `DeadEnd` with all body fields `None` → no typed fields.
     #[test]
     fn dead_end_none_why_failed_no_typed_fields() {
         let node = Node {
-            fields: NodeFields::DeadEnd { why_failed: None },
+            fields: NodeFields::DeadEnd {
+                hypothesis: None,
+                failure_mode: None,
+                lesson: None,
+                why_failed: None,
+            },
             ..make_node("N02", NodeKind::DeadEnd, NodeFields::Other)
+        };
+        let m = detail_model(&node, &bare_manifest());
+        assert!(m.typed_fields.is_empty());
+    }
+
+    /// A widened `DeadEnd` carrying hypothesis/failure_mode/lesson → typed_fields
+    /// labels are exactly ["hypothesis", "failure mode", "lesson"] in that order;
+    /// failure mode is_primary.
+    #[test]
+    fn dead_end_hypothesis_failure_mode_lesson_order() {
+        let node = Node {
+            fields: NodeFields::DeadEnd {
+                hypothesis: Some("GPT-3.5 passes single-sample.".to_string()),
+                failure_mode: Some("Low pass rate at scale.".to_string()),
+                lesson: Some("Need execution validation.".to_string()),
+                why_failed: None,
+            },
+            ..make_node("N02", NodeKind::DeadEnd, NodeFields::Other)
+        };
+        let m = detail_model(&node, &bare_manifest());
+        let labels: Vec<&str> = m.typed_fields.iter().map(|f| f.label).collect();
+        assert_eq!(labels, ["hypothesis", "failure mode", "lesson"]);
+        assert!(!m.typed_fields[0].is_primary, "hypothesis is NOT primary");
+        assert!(m.typed_fields[1].is_primary, "failure mode IS primary");
+        assert!(!m.typed_fields[2].is_primary, "lesson is NOT primary");
+    }
+
+    /// A `Pivot` node with from/to/trigger → typed_fields labels are exactly
+    /// ["from", "to", "trigger"] in that order; trigger is_primary.
+    #[test]
+    fn pivot_from_to_trigger_order() {
+        let node = Node {
+            fields: NodeFields::Pivot {
+                from: Some("Full manual curation".to_string()),
+                to: Some("Semi-automated pipeline".to_string()),
+                trigger: Some("Manual curation infeasible at scale.".to_string()),
+            },
+            ..make_node("N01", NodeKind::Pivot, NodeFields::Other)
+        };
+        let m = detail_model(&node, &bare_manifest());
+        let labels: Vec<&str> = m.typed_fields.iter().map(|f| f.label).collect();
+        assert_eq!(labels, ["from", "to", "trigger"]);
+        assert!(!m.typed_fields[0].is_primary, "from is NOT primary");
+        assert!(!m.typed_fields[1].is_primary, "to is NOT primary");
+        assert!(m.typed_fields[2].is_primary, "trigger IS primary");
+        assert_eq!(
+            m.typed_fields[2].value,
+            FieldValue::Text("Manual curation infeasible at scale.".to_string())
+        );
+    }
+
+    /// A `Pivot` node with all fields `None` → no typed fields.
+    #[test]
+    fn pivot_all_none_no_typed_fields() {
+        let node = Node {
+            fields: NodeFields::Pivot {
+                from: None,
+                to: None,
+                trigger: None,
+            },
+            ..make_node("N01", NodeKind::Pivot, NodeFields::Other)
         };
         let m = detail_model(&node, &bare_manifest());
         assert!(m.typed_fields.is_empty());

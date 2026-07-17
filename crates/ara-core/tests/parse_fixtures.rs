@@ -72,6 +72,34 @@ fn parse_dir_resolves_bindings() {
     );
 }
 
+/// The widened node model (`pivot` + widened `dead_end`) projects to the
+/// expected manifest.
+#[test]
+fn pivot_deadend_snapshot() {
+    let yaml = read("synthetic/pivot_deadend.yaml");
+    let (manifest, _) = parse_sources(&yaml, None).expect("ok");
+    insta::assert_json_snapshot!("pivot_deadend_manifest", manifest);
+}
+
+/// The six widened body fields (`hypothesis`/`failure_mode`/`lesson` on
+/// `dead_end`, `from`/`to`/`trigger` on `pivot`) must produce ZERO unknown-field
+/// warnings — they are now first-class, not dropped.
+#[test]
+fn pivot_deadend_has_no_field_warnings() {
+    let yaml = read("synthetic/pivot_deadend.yaml");
+    let (_manifest, report) = parse_sources(&yaml, None).expect("ok");
+    let widened = ["hypothesis", "failure_mode", "lesson", "from", "to", "trigger"];
+    for w in report.warnings() {
+        for field in widened {
+            assert!(
+                !w.message.contains(field),
+                "unexpected warning mentioning `{field}`: {}",
+                w.message
+            );
+        }
+    }
+}
+
 #[test]
 fn root_single_dialect_normalizes() {
     let yaml = read("synthetic/root_single.yaml");

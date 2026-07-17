@@ -1,0 +1,24 @@
+# Synthetic fixture for the widened node model. Not from the official corpus;
+# exercises a `pivot` root (from/to/trigger) with a `dead_end` child carrying
+# hypothesis/failure_mode/lesson. These six fields must project cleanly with
+# ZERO unknown-field warnings.
+tree:
+  - id: N01
+    type: pivot
+    title: "Curation strategy pivot"
+    from: "Full manual curation"
+    to: "Semi-automated pipeline with multi-pass LLM extraction + execution validation"
+    trigger: >
+      Manual curation infeasible at scale; needed automated extraction with a
+      validation loop.
+    children:
+      - id: N02
+        type: dead_end
+        title: "GPT-3.5 single-sample generation"
+        hypothesis: >
+          GPT-3.5's Python single-sample pass rate is high enough to skip
+          multi-sample validation.
+        failure_mode: >
+          Pass rate collapsed on harder tasks; single samples were unreliable.
+        lesson: >
+          Use multi-sample generation with execution validation instead.

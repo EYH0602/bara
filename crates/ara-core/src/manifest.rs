@@ -127,7 +127,7 @@ pub struct Node {
     pub pos: Option<Point>,
 }
 
-/// The five canonical node types, plus a preserved escape hatch.
+/// The canonical node types, plus a preserved escape hatch.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeKind {
@@ -136,6 +136,7 @@ pub enum NodeKind {
     Decision,
     DeadEnd,
     Insight,
+    Pivot,
     /// An unrecognized `type:`; the raw string is preserved.
     Other(String),
 }
@@ -154,9 +155,17 @@ pub enum NodeFields {
         rationale: Option<String>,
     },
     DeadEnd {
+        hypothesis: Option<String>,
+        failure_mode: Option<String>,
+        lesson: Option<String>,
         why_failed: Option<String>,
     },
     Insight,
+    Pivot {
+        from: Option<String>,
+        to: Option<String>,
+        trigger: Option<String>,
+    },
     /// Unknown kind: body fields are captured (as warnings) at the raw layer.
     Other,
 }

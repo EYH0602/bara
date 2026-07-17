@@ -55,6 +55,19 @@ pub(crate) struct RawNode {
     // dead_end
     #[serde(default)]
     pub why_failed: Option<String>,
+    #[serde(default)]
+    pub hypothesis: Option<String>,
+    #[serde(default)]
+    pub failure_mode: Option<String>,
+    #[serde(default)]
+    pub lesson: Option<String>,
+    // pivot
+    #[serde(default)]
+    pub from: Option<String>,
+    #[serde(default)]
+    pub to: Option<String>,
+    #[serde(default)]
+    pub trigger: Option<String>,
     // decision
     #[serde(default)]
     pub choice: Option<String>,

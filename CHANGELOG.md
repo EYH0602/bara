@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Model `pivot` nodes (`from`/`to`/`trigger`) and the
+  `hypothesis`/`failure_mode`/`lesson` fields on `dead_end` nodes, which
+  previously degraded to unknown-field warnings.
+
 ## [0.1.6] - 2026-07-13
 
 ### Added

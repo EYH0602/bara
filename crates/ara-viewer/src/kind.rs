@@ -54,6 +54,11 @@ pub fn kind_meta(kind: &NodeKind) -> KindMeta {
             glyph: '!',
             badge: "insight".to_string(),
         },
+        NodeKind::Pivot => KindMeta {
+            css_class: "pivot",
+            glyph: '⤳',
+            badge: "pivot".to_string(),
+        },
         NodeKind::Other(raw) => KindMeta {
             css_class: "other",
             glyph: '•',
@@ -109,6 +114,14 @@ mod tests {
     }
 
     #[test]
+    fn pivot_mapping() {
+        let m = kind_meta(&NodeKind::Pivot);
+        assert_eq!(m.css_class, "pivot");
+        assert_eq!(m.glyph, '⤳');
+        assert_eq!(m.badge, "pivot");
+    }
+
+    #[test]
     fn other_mapping_uses_raw_for_badge_not_css() {
         let m = kind_meta(&NodeKind::Other("custom_thing".into()));
         // css_class is fixed — NEVER derived from raw
@@ -139,12 +152,14 @@ mod tests {
         //   Decision   -> "decision"
         //   DeadEnd    -> "dead_end"
         //   Insight    -> "insight"
+        //   Pivot      -> "pivot"
         let cases: &[(&NodeKind, &str)] = &[
             (&NodeKind::Question, "question"),
             (&NodeKind::Experiment, "experiment"),
             (&NodeKind::Decision, "decision"),
             (&NodeKind::DeadEnd, "dead_end"),
             (&NodeKind::Insight, "insight"),
+            (&NodeKind::Pivot, "pivot"),
         ];
         for (kind, expected_wire_tag) in cases {
             let m = kind_meta(kind);

@@ -260,10 +260,21 @@ impl Normalizer {
             Some("dead_end") => (
                 NodeKind::DeadEnd,
                 NodeFields::DeadEnd {
+                    hypothesis: raw.hypothesis.clone(),
+                    failure_mode: raw.failure_mode.clone(),
+                    lesson: raw.lesson.clone(),
                     why_failed: raw.why_failed.clone(),
                 },
             ),
             Some("insight") => (NodeKind::Insight, NodeFields::Insight),
+            Some("pivot") => (
+                NodeKind::Pivot,
+                NodeFields::Pivot {
+                    from: raw.from.clone(),
+                    to: raw.to.clone(),
+                    trigger: raw.trigger.clone(),
+                },
+            ),
             Some("") | None => {
                 self.report
                     .warn(format!("nodes[{id}]"), "node is missing a `type`");
@@ -326,6 +337,24 @@ fn body_field_names(raw: &RawNode) -> Vec<&'static str> {
     }
     if raw.why_failed.is_some() {
         names.push("why_failed");
+    }
+    if raw.hypothesis.is_some() {
+        names.push("hypothesis");
+    }
+    if raw.failure_mode.is_some() {
+        names.push("failure_mode");
+    }
+    if raw.lesson.is_some() {
+        names.push("lesson");
+    }
+    if raw.from.is_some() {
+        names.push("from");
+    }
+    if raw.to.is_some() {
+        names.push("to");
+    }
+    if raw.trigger.is_some() {
+        names.push("trigger");
     }
     if raw.choice.is_some() {
         names.push("choice");
@@ -659,6 +688,64 @@ tree:
                 .message
                 .contains("`result` dropped for unknown type `hypothesis`")),
             "expected dropped-field warning, got: {report}"
+        );
+    }
+
+    #[test]
+    fn pivot_projects_kind_and_fields_no_warning() {
+        // A `pivot` node projects to NodeKind::Pivot + NodeFields::Pivot with
+        // from/to/trigger populated, and carries no unknown-field warning.
+        let yaml = "\
+tree:
+  - id: N01
+    type: pivot
+    from: manual
+    to: automated
+    trigger: infeasible at scale
+";
+        let (m, report) = parse_sources(yaml, None).expect("ok");
+        assert_eq!(m.nodes[0].kind, NodeKind::Pivot);
+        assert_eq!(
+            m.nodes[0].fields,
+            NodeFields::Pivot {
+                from: Some("manual".to_string()),
+                to: Some("automated".to_string()),
+                trigger: Some("infeasible at scale".to_string()),
+            }
+        );
+        assert!(
+            report.warnings().is_empty(),
+            "pivot fields must not warn, got: {report}"
+        );
+    }
+
+    #[test]
+    fn dead_end_widened_fields_no_warning() {
+        // A `dead_end` node carrying hypothesis/failure_mode/lesson populates all
+        // fields (plus why_failed) and carries no unknown-field warning.
+        let yaml = "\
+tree:
+  - id: N01
+    type: dead_end
+    hypothesis: h
+    failure_mode: fm
+    lesson: l
+    why_failed: wf
+";
+        let (m, report) = parse_sources(yaml, None).expect("ok");
+        assert_eq!(m.nodes[0].kind, NodeKind::DeadEnd);
+        assert_eq!(
+            m.nodes[0].fields,
+            NodeFields::DeadEnd {
+                hypothesis: Some("h".to_string()),
+                failure_mode: Some("fm".to_string()),
+                lesson: Some("l".to_string()),
+                why_failed: Some("wf".to_string()),
+            }
+        );
+        assert!(
+            report.warnings().is_empty(),
+            "dead_end fields must not warn, got: {report}"
         );
     }
 

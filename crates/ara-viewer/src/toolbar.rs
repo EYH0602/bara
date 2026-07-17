@@ -25,7 +25,7 @@ struct KindOption {
 
 /// Derive the distinct kind options present in `manifest.nodes` in canonical
 /// first-seen order.  The canonical order is:
-/// question → experiment → decision → dead_end → insight → other
+/// question → experiment → decision → dead_end → insight → pivot → other
 /// (matches the plan's "stable canonical order").
 fn kind_options(manifest: &Manifest) -> Vec<KindOption> {
     // Canonical ordering index — lower = earlier.
@@ -36,7 +36,8 @@ fn kind_options(manifest: &Manifest) -> Vec<KindOption> {
             NodeKind::Decision => 2,
             NodeKind::DeadEnd => 3,
             NodeKind::Insight => 4,
-            NodeKind::Other(_) => 5,
+            NodeKind::Pivot => 5,
+            NodeKind::Other(_) => 6,
         }
     }
 
