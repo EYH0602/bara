@@ -684,6 +684,175 @@ body.is-resizing.resizing-row { cursor: row-resize; }
   flex: 1;
 }
 
+/* ── Panel launchers (header) ────────────────────────────────────────────────
+   Right-aligned button group that opens the side panels (Dependencies, and the
+   Glossary / Context / Recipes panels that follow). The leading `margin-left:
+   auto` collapses the gap so it sits next to the filter toolbar on the right.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.panel-launchers {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.panel-launch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Live count pill on a launcher button (e.g. Dependencies · 6). */
+.launch-count {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--accent-text);
+  background-color: var(--chip);
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+}
+
+/* ── Modal (shared accessible dialog) ────────────────────────────────────────
+   Scrim dims the whole viewport above the app chrome; the card is centered,
+   capped at 880px, and scrolls internally. Warm-cream skin — no serif, no hub
+   colours. Goes full-screen below 800px (see the responsive block).
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 4rem 1rem 2rem;
+  /* --ink at 45% opacity. */
+  background-color: rgba(47, 42, 35, 0.45);
+  overflow-y: auto;
+}
+
+.modal {
+  width: 100%;
+  max-width: 880px;
+  max-height: calc(100vh - 6rem);
+  display: flex;
+  flex-direction: column;
+  background-color: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(47, 42, 35, 0.25);
+  outline: none;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1.1rem;
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.modal-esc-hint {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--muted);
+}
+
+.modal-body {
+  padding: 1rem 1.1rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* ── Panel filter input + Dependencies entries ───────────────────────────────
+   `.rw-entry` reuses the `.block` card; chips reuse `.chip-row` / `.chip`.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.panel-filter {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  color: var(--ink);
+  background-color: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.45rem 0.6rem;
+  outline: none;
+  transition: border-color 0.12s;
+}
+
+.panel-filter:focus-visible {
+  border-color: var(--accent);
+}
+
+.rw-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.rw-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rw-id {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
+.rw-cite {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.rw-line {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.rw-key {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  min-width: 5rem;
+  flex-shrink: 0;
+  padding-top: 0.1rem;
+}
+
+.rw-why {
+  color: var(--muted);
+}
+
+.rw-empty {
+  color: var(--muted);
+}
+
 /* ── Detail pane ─────────────────────────────────────────────────────────────── */
 
 .detail-root {
@@ -1048,5 +1217,19 @@ pre.diff {
   /* Narrow search input so it doesn't overflow on 375 px screens. */
   .toolbar-search {
     width: 8rem;
+  }
+
+  /* Modal goes full-screen on narrow viewports — no room for a centered card. */
+  .modal-scrim {
+    padding: 0;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border: 0;
+    border-radius: 0;
   }
 }

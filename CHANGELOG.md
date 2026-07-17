@@ -7,6 +7,15 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- Viewer Dependencies panel, built on a new shared accessible `Modal` component.
+  A header launcher button shows a live count of the manifest's `related_work`
+  (hidden entirely at a 0 count) and opens a modal listing every reference in
+  source order (id, citation, type, DOI, delta, adopted elements, affected-claim
+  chips) with its own case-insensitive filter input. The `Modal` is a reusable
+  a11y primitive (`role="dialog"` + `aria-modal` + `aria-labelledby`) with a
+  full focus trap: focus moves into the dialog on open, Tab/Shift+Tab wrap at
+  both ends, Esc and scrim-click close, and focus returns to the invoking
+  element on close. It goes full-screen below 800px.
 - Viewer detail pane: per-node **BUILT ON** and **RESULT** blocks in the
   corrected hub order. BUILT ON renders chips for the related work a node builds
   on (id + citation, resolved from `built_on` → `related_work`); RESULT renders

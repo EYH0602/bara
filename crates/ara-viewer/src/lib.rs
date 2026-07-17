@@ -5,9 +5,11 @@
 //! The binary entry point lives in `src/main.rs`.
 
 pub mod canvas;
+pub mod deps;
 pub mod detail;
 pub mod filter;
 pub mod kind;
+pub mod modal;
 pub mod replay;
 pub mod scene;
 pub mod source;
@@ -19,6 +21,7 @@ pub mod tree;
 use std::collections::HashSet;
 
 use ara_core::{NodeId, PaperMeta};
+use deps::DependenciesPanel;
 use detail::DetailPane;
 use filter::FilterState;
 use leptos::prelude::*;
@@ -138,6 +141,12 @@ pub fn App() -> impl IntoView {
                 // Abstract) when the loaded manifest carries a titled PaperMeta;
                 // otherwise the "ARA Viewer" brand. See `PaperHeader`.
                 <PaperHeader load_state=load_state />
+            </div>
+            // Panel launchers (right-aligned, before the filter toolbar). Each
+            // launcher owns its button + modal; slice 6 adds Glossary/Context/
+            // Recipes here. A launcher hides itself when its data is absent.
+            <div class="panel-launchers">
+                <DependenciesPanel load_state=load_state />
             </div>
             // role="toolbar" gives AT users a named landmark for the filter controls.
             <div class="toolbar-area" role="toolbar" aria-label="Filters">
