@@ -14,11 +14,21 @@ pub mod manifest;
 mod parse;
 pub mod report;
 mod schema;
+// The `PAPER.md` / `logic/*` / `evidence/` readers are consumed only by the
+// native `parse_dir`; gating them keeps the wasm client build (which only
+// deserializes the already-built manifest) free of dead-code warnings.
+#[cfg(feature = "native")]
+mod evidence;
+#[cfg(feature = "native")]
+mod paper;
+#[cfg(feature = "native")]
+mod sections;
 
 pub use layout::{LayoutOptions, LayoutResult, NodePosition, Point, Rect};
 pub use manifest::{
-    Binding, BindingRole, Claim, ClaimId, Link, LinkKind, Manifest, Node, NodeFields, NodeId,
-    NodeKind,
+    Binding, BindingRole, BuiltOn, Claim, ClaimId, Concept, Exhibit, ExhibitKind, Link, LinkKind,
+    Manifest, Node, NodeExhibit, NodeFields, NodeId, NodeKind, PaperMeta, Problem, Recipe,
+    RelatedWork,
 };
 pub use report::{Diagnostic, ParseReport, Severity};
 

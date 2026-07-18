@@ -20,7 +20,11 @@ wasm_bindgen_test_configure!(run_in_browser);
 use std::collections::HashSet;
 
 use ara_viewer::{
+    PaperHeader,
+    deps::DependenciesPanel,
     detail::DetailPane,
+    modal::Modal,
+    panels::{ContextPanel, GlossaryPanel, RecipesPanel},
     replay::{ReplayBar, ReplayState, install_arrow_key_listener, node_order},
     scene::{GraphRenderer, GraphView, LayoutView, SvgRenderer},
     source::ws_url_from_base,
@@ -612,6 +616,150 @@ fn insight_node_shows_description_no_typed_fields() {
     );
 }
 
+// ── Built-on / Result linkage fixture ─────────────────────────────────────────
+//
+// N01 (Experiment) carries an evidence note + a built_on edge (→ RW01) + a
+// node_exhibit edge (→ E01). N02 (Insight) carries a description only, no
+// linkage. The new manifest fields are serde-defaulted, so we include only what
+// these tests exercise.
+const LINKAGE_FIXTURE_JSON: &str = r#"{
+  "nodes": [
+    {
+      "id": "N01",
+      "kind": "experiment",
+      "label": "Train the transformer",
+      "description": "Ran the training experiment.",
+      "source_refs": [],
+      "evidence_notes": ["Logged in run 42"],
+      "fields": { "experiment": { "result": "28.4 BLEU" } },
+      "pos": { "x": 100.0, "y": 100.0 }
+    },
+    {
+      "id": "N02",
+      "kind": "insight",
+      "label": "A bare insight",
+      "description": "No linkage here.",
+      "source_refs": [],
+      "evidence_notes": [],
+      "fields": "insight",
+      "pos": { "x": 300.0, "y": 100.0 }
+    }
+  ],
+  "links": [],
+  "bindings": [],
+  "claims": [],
+  "related_work": [
+    { "id": "RW01", "cite": "Vaswani et al., 2017", "doi": null, "kind": null,
+      "what_changed": null, "why": null, "adopted": null, "claims_affected": [] }
+  ],
+  "exhibits": [
+    { "id": "E01", "file": "evidence/fig1.md", "kind": "figure",
+      "source": "Fig. 1", "description": null, "claims": [], "body": "" }
+  ],
+  "built_on": [
+    { "node": "N01", "related_work": "RW01" }
+  ],
+  "node_exhibits": [
+    { "node": "N01", "exhibit": "E01" }
+  ],
+  "bounds": { "x": 0.0, "y": 0.0, "width": 500.0, "height": 500.0 }
+}"#;
+
+// ── Test: built-on + result blocks render, in order after evidence ────────────
+
+/// N01 has an evidence note, a built_on edge (→ RW01) and a node_exhibit
+/// (→ E01). The detail pane must render a `.built-on-block` (with the RW chip)
+/// and a `.result-block` (with the exhibit chip), in that DOM order after the
+/// evidence block.
+#[wasm_bindgen_test]
+fn built_on_and_result_blocks_render_after_evidence() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest = parse_manifest(LINKAGE_FIXTURE_JSON).expect("linkage fixture must parse");
+    let selected: RwSignal<Option<ara_core::NodeId>> =
+        RwSignal::new(Some(ara_core::NodeId::new("N01")));
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <DetailPane load_state=load_state selected=selected /> }
+    });
+
+    // Both new blocks are present.
+    let built_on = container
+        .query_selector("div.built-on-block")
+        .unwrap()
+        .expect("built-on-block must render")
+        .dyn_into::<HtmlElement>()
+        .unwrap();
+    let result = container
+        .query_selector("div.result-block")
+        .unwrap()
+        .expect("result-block must render")
+        .dyn_into::<HtmlElement>()
+        .unwrap();
+
+    // Chips carry the resolved linkage.
+    assert!(
+        built_on.inner_text().contains("RW01") && built_on.inner_text().contains("Vaswani"),
+        "built-on chip must show the RW id + cite, got: {:?}",
+        built_on.inner_text()
+    );
+    assert!(
+        result.inner_text().contains("E01"),
+        "result chip must show the exhibit id, got: {:?}",
+        result.inner_text()
+    );
+
+    // DOM order: evidence < built on < result.
+    let text = container.inner_text();
+    let pos_evidence = text.find("evidence").expect("'evidence' label must appear");
+    let pos_built_on = text.find("built on").expect("'built on' label must appear");
+    let pos_result = text.find("result").expect("'result' label must appear");
+    assert!(
+        pos_evidence < pos_built_on,
+        "built-on block must appear after the evidence block"
+    );
+    assert!(
+        pos_built_on < pos_result,
+        "result block must appear after the built-on block"
+    );
+}
+
+// ── Test: node with no linkage renders neither block ──────────────────────────
+
+/// N02 has no built_on and no node_exhibit edges. The detail pane must render
+/// neither `.built-on-block` nor `.result-block`.
+#[wasm_bindgen_test]
+fn node_without_linkage_renders_neither_block() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest = parse_manifest(LINKAGE_FIXTURE_JSON).expect("linkage fixture must parse");
+    let selected: RwSignal<Option<ara_core::NodeId>> =
+        RwSignal::new(Some(ara_core::NodeId::new("N02")));
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <DetailPane load_state=load_state selected=selected /> }
+    });
+
+    assert!(
+        container
+            .query_selector("div.built-on-block")
+            .unwrap()
+            .is_none(),
+        "node with no built_on must NOT render a built-on-block"
+    );
+    assert!(
+        container
+            .query_selector("div.result-block")
+            .unwrap()
+            .is_none(),
+        "node with no exhibits must NOT render a result-block"
+    );
+}
+
 // ── Test: layout toggle flips the active segment + drives the signal ──────────
 
 /// Mounts `LayoutToggle` bound to a `layout` signal. Asserts:
@@ -747,6 +895,210 @@ fn search_query_dims_non_matching_nodes() {
     assert!(
         n01_class.contains("dimmed"),
         "non-matching node N01 must be dimmed, got class: {n01_class}"
+    );
+}
+
+// ── Paper-header fixtures ─────────────────────────────────────────────────────
+//
+// A manifest carrying a full PaperMeta (title/authors/venue/year/abstract), and
+// one with no `paper` key at all (→ paper defaults to None). Nodes are empty:
+// the header reads only `manifest.paper`, so the node list is irrelevant here.
+const PAPER_FIXTURE_JSON: &str = r#"{
+  "nodes": [],
+  "links": [],
+  "bindings": [],
+  "claims": [],
+  "paper": {
+    "title": "Attention Is All You Need",
+    "authors": ["A. Vaswani", "N. Shazeer"],
+    "year": "2017",
+    "venue": "NeurIPS",
+    "doi": null,
+    "abstract": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks.",
+    "keywords": []
+  }
+}"#;
+
+const NO_PAPER_FIXTURE_JSON: &str = r#"{
+  "nodes": [],
+  "links": [],
+  "bindings": [],
+  "claims": []
+}"#;
+
+const NO_ABSTRACT_PAPER_FIXTURE_JSON: &str = r#"{
+  "nodes": [],
+  "links": [],
+  "bindings": [],
+  "claims": [],
+  "paper": {
+    "title": "A Terse Artifact",
+    "authors": ["A. Author"],
+    "year": "2024",
+    "venue": "ArXiv",
+    "doi": null,
+    "abstract": null,
+    "keywords": []
+  }
+}"#;
+
+// ── Test: paper header renders title, byline, and a collapsed Abstract ─────────
+
+/// Mounts `PaperHeader` with a `LoadState::Loaded` manifest carrying a full
+/// `PaperMeta`. The header must show the title `<h1>`, the joined
+/// authors/venue/year byline, and a collapsed `<details class="paper-abstract">`
+/// (no `open` attribute) with an "Abstract" summary.
+#[wasm_bindgen_test]
+fn paper_header_renders_title_byline_and_collapsed_abstract() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest = parse_manifest(PAPER_FIXTURE_JSON).expect("paper fixture must parse");
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <PaperHeader load_state=load_state /> }
+    });
+
+    // Title in the <h1>.
+    let h1 = container
+        .query_selector("h1")
+        .unwrap()
+        .expect("paper header must render an <h1>");
+    assert_eq!(
+        h1.dyn_ref::<HtmlElement>().unwrap().inner_text(),
+        "Attention Is All You Need",
+        "h1 must carry the paper title"
+    );
+
+    // Byline: authors joined with ", ", then "· Venue Year".
+    let meta = container
+        .query_selector("span.paper-meta")
+        .unwrap()
+        .expect("byline .paper-meta must be present")
+        .dyn_into::<HtmlElement>()
+        .unwrap();
+    let meta_text = meta.inner_text();
+    assert!(
+        meta_text.contains("A. Vaswani, N. Shazeer"),
+        "byline must join authors with ', ', got: {meta_text:?}"
+    );
+    assert!(
+        meta_text.contains("NeurIPS 2017"),
+        "byline must show 'Venue Year', got: {meta_text:?}"
+    );
+
+    // Abstract lives in a <details> that is collapsed (no `open` attribute).
+    let details = container
+        .query_selector("details.paper-abstract")
+        .unwrap()
+        .expect("abstract must render in a <details class='paper-abstract'>");
+    assert!(
+        details.get_attribute("open").is_none(),
+        "abstract <details> must be collapsed by default (no `open`)"
+    );
+    let summary = details
+        .query_selector("summary")
+        .unwrap()
+        .expect("abstract <details> must have a <summary>")
+        .dyn_into::<HtmlElement>()
+        .unwrap();
+    assert_eq!(
+        summary.inner_text(),
+        "Abstract",
+        "summary must read 'Abstract'"
+    );
+}
+
+// ── Test: manifest without a paper falls back to the ARA Viewer brand ─────────
+
+/// With `paper = None`, `PaperHeader` must fall back to the brand: an "ARA
+/// Viewer" `<h1>` + the `.header-subtitle`, and render NO paper byline/abstract.
+#[wasm_bindgen_test]
+fn paper_header_falls_back_to_brand_without_paper() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest = parse_manifest(NO_PAPER_FIXTURE_JSON).expect("no-paper fixture must parse");
+    assert!(manifest.paper.is_none(), "fixture must have no paper");
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <PaperHeader load_state=load_state /> }
+    });
+
+    let h1 = container
+        .query_selector("h1")
+        .unwrap()
+        .expect("brand header must render an <h1>");
+    assert_eq!(
+        h1.dyn_ref::<HtmlElement>().unwrap().inner_text(),
+        "ARA Viewer",
+        "fallback h1 must read 'ARA Viewer'"
+    );
+    assert!(
+        container
+            .query_selector("span.header-subtitle")
+            .unwrap()
+            .is_some(),
+        "fallback must render the .header-subtitle brand tagline"
+    );
+    // No paper-specific chrome.
+    assert!(
+        container
+            .query_selector("span.paper-meta")
+            .unwrap()
+            .is_none(),
+        "brand fallback must NOT render a paper byline"
+    );
+    assert!(
+        container
+            .query_selector("details.paper-abstract")
+            .unwrap()
+            .is_none(),
+        "brand fallback must NOT render an abstract"
+    );
+}
+
+// ── Test: titled paper with no abstract renders header but no <details> ────────
+
+/// A titled `PaperMeta` whose `abstract` is absent must still render the paper
+/// header (title + byline) but NO `<details class="paper-abstract">`.
+#[wasm_bindgen_test]
+fn paper_header_without_abstract_omits_details() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest =
+        parse_manifest(NO_ABSTRACT_PAPER_FIXTURE_JSON).expect("no-abstract fixture must parse");
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <PaperHeader load_state=load_state /> }
+    });
+
+    let h1 = container
+        .query_selector("h1")
+        .unwrap()
+        .expect("paper header must render an <h1>");
+    assert_eq!(
+        h1.dyn_ref::<HtmlElement>().unwrap().inner_text(),
+        "A Terse Artifact",
+        "h1 must carry the paper title"
+    );
+    assert!(
+        container
+            .query_selector("span.paper-meta")
+            .unwrap()
+            .is_some(),
+        "byline must still render"
+    );
+    assert!(
+        container
+            .query_selector("details.paper-abstract")
+            .unwrap()
+            .is_none(),
+        "no abstract → no <details>"
     );
 }
 
@@ -1916,5 +2268,575 @@ async fn splitter_mobile_collapse_hides_gutter_and_single_column() {
     assert_eq!(
         track_count, 1,
         "at <800px .app-main must be a single grid column (got {cols:?})"
+    );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Modal (shared a11y dialog) + Dependencies panel — Slice 5
+//
+// These exercise the full accessibility contract of `modal::Modal` in a real
+// browser: focus-in on open, the Tab/Shift+Tab focus trap (wrapping both ends),
+// Esc-to-close, focus restore to the invoking element, and scrim-vs-content
+// click behaviour. Plus the Dependencies panel: live count, hidden at 0, and
+// the in-modal filter.
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Dispatch a bubbling `keydown` on `document` (the modal listens there).
+fn dispatch_modal_keydown(doc: &Document, key: &str, shift: bool) {
+    let init = web_sys::KeyboardEventInit::new();
+    init.set_key(key);
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    init.set_shift_key(shift);
+    let ev = web_sys::KeyboardEvent::new_with_keyboard_event_init_dict("keydown", &init).unwrap();
+    doc.dispatch_event(&ev).unwrap();
+}
+
+/// Move focus to the first element matching `sel` within `doc`.
+fn focus_sel(doc: &Document, sel: &str) {
+    let el = doc
+        .query_selector(sel)
+        .unwrap()
+        .unwrap_or_else(|| panic!("selector {sel:?} must match an element"));
+    el.unchecked_ref::<HtmlElement>().focus().unwrap();
+}
+
+/// True when `document.activeElement` is the same node as the first `sel` match.
+fn active_is(doc: &Document, sel: &str) -> bool {
+    let el = doc.query_selector(sel).unwrap().expect("sel must match");
+    doc.active_element()
+        .map(|a| a.is_same_node(Some(el.unchecked_ref::<web_sys::Node>())))
+        .unwrap_or(false)
+}
+
+/// Mount a harness: an `#opener` button (outside the modal) plus a `Modal` with
+/// two buttons + an input as focusable content. Returns the shared `open`
+/// signal AND the mount handle (boxed) — the caller MUST keep the handle alive
+/// for the test's duration and drop it at the end. Dropping it unmounts and
+/// runs the modal's cleanup, detaching its document keydown listener; leaking it
+/// (or dropping it early) would leave listeners from prior tests interfering.
+/// `open` starts closed.
+fn mount_modal_harness() -> (RwSignal<bool>, Box<dyn std::any::Any>) {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+    let open = RwSignal::new(false);
+    let handle = leptos::mount::mount_to(container, move || {
+        view! {
+            <button id="opener" on:click=move |_| open.set(true)>"Open"</button>
+            <Modal open=open title="Test Dialog">
+                <button id="btn-a">"A"</button>
+                <button id="btn-b">"B"</button>
+                <input id="input-c" type="text" />
+            </Modal>
+        }
+    });
+    (open, Box::new(handle))
+}
+
+// ── Test: opening moves focus into the modal ──────────────────────────────────
+
+#[wasm_bindgen_test]
+async fn modal_open_moves_focus_inside() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let (open, _handle) = mount_modal_harness();
+
+    open.set(true);
+    leptos::task::tick().await;
+
+    let modal = doc
+        .query_selector(".modal")
+        .unwrap()
+        .expect("modal must be rendered when open");
+    let active = doc
+        .active_element()
+        .expect("something must be focused after open");
+    assert!(
+        modal.contains(Some(active.unchecked_ref::<web_sys::Node>())),
+        "on open, focus must move into the .modal (active element inside it)"
+    );
+}
+
+// ── Test: role/aria contract ──────────────────────────────────────────────────
+
+#[wasm_bindgen_test]
+async fn modal_has_dialog_aria_contract() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let (open, _handle) = mount_modal_harness();
+    open.set(true);
+    leptos::task::tick().await;
+
+    let dialog = doc
+        .query_selector(".modal")
+        .unwrap()
+        .expect("modal present");
+    assert_eq!(dialog.get_attribute("role").as_deref(), Some("dialog"));
+    assert_eq!(
+        dialog.get_attribute("aria-modal").as_deref(),
+        Some("true"),
+        "dialog must be aria-modal"
+    );
+    let labelled = dialog
+        .get_attribute("aria-labelledby")
+        .expect("aria-labelledby must be set");
+    let title = doc
+        .get_element_by_id(&labelled)
+        .expect("aria-labelledby must point at an existing element");
+    assert!(
+        title
+            .text_content()
+            .unwrap_or_default()
+            .contains("Test Dialog"),
+        "aria-labelledby target must be the title"
+    );
+}
+
+// ── Test: Tab at the last focusable wraps to the first ────────────────────────
+
+#[wasm_bindgen_test]
+async fn modal_tab_wraps_last_to_first() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let (open, _handle) = mount_modal_harness();
+    open.set(true);
+    leptos::task::tick().await;
+
+    // Focus the last focusable (the input), then Tab forward → wraps to first
+    // focusable, which is the header close button.
+    focus_sel(&doc, "#input-c");
+    dispatch_modal_keydown(&doc, "Tab", false);
+    leptos::task::tick().await;
+
+    assert!(
+        active_is(&doc, ".modal-close"),
+        "Tab at the last focusable must wrap to the first (close button)"
+    );
+}
+
+// ── Test: Shift+Tab at the first focusable wraps to the last ──────────────────
+
+#[wasm_bindgen_test]
+async fn modal_shift_tab_wraps_first_to_last() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let (open, _handle) = mount_modal_harness();
+    open.set(true);
+    leptos::task::tick().await;
+
+    // Focus the first focusable (close button), Shift+Tab → wraps to last (input).
+    focus_sel(&doc, ".modal-close");
+    dispatch_modal_keydown(&doc, "Tab", true);
+    leptos::task::tick().await;
+
+    assert!(
+        active_is(&doc, "#input-c"),
+        "Shift+Tab at the first focusable must wrap to the last (input)"
+    );
+}
+
+// ── Test: Escape closes the modal ─────────────────────────────────────────────
+
+#[wasm_bindgen_test]
+async fn modal_escape_closes() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let (open, _handle) = mount_modal_harness();
+    open.set(true);
+    leptos::task::tick().await;
+    assert!(doc.query_selector(".modal").unwrap().is_some());
+
+    dispatch_modal_keydown(&doc, "Escape", false);
+    leptos::task::tick().await;
+
+    assert!(
+        doc.query_selector(".modal").unwrap().is_none(),
+        "Escape must close the modal (.modal removed)"
+    );
+    assert!(!open.get(), "Escape must set open=false");
+}
+
+// ── Test: on close, focus returns to the invoking element ─────────────────────
+
+#[wasm_bindgen_test]
+async fn modal_returns_focus_on_close() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let (open, _handle) = mount_modal_harness();
+
+    // Focus the opener, THEN open — the modal must capture it as the return target.
+    focus_sel(&doc, "#opener");
+    open.set(true);
+    leptos::task::tick().await;
+    // Focus is now inside the modal (not the opener).
+    assert!(
+        !active_is(&doc, "#opener"),
+        "focus should have left the opener"
+    );
+
+    // Close via Escape → focus must return to the opener.
+    dispatch_modal_keydown(&doc, "Escape", false);
+    leptos::task::tick().await;
+
+    assert!(
+        active_is(&doc, "#opener"),
+        "on close, focus must return to the invoking element (#opener)"
+    );
+}
+
+// ── Test: scrim click closes; content click does not ──────────────────────────
+
+#[wasm_bindgen_test]
+async fn modal_content_click_does_not_close() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let (open, _handle) = mount_modal_harness();
+    open.set(true);
+    leptos::task::tick().await;
+
+    // Click a button INSIDE the modal → must NOT close.
+    let btn = doc
+        .query_selector("#btn-a")
+        .unwrap()
+        .expect("btn-a present");
+    btn.unchecked_ref::<HtmlElement>().click();
+    leptos::task::tick().await;
+    assert!(
+        doc.query_selector(".modal").unwrap().is_some(),
+        "clicking inside .modal must not close it"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn modal_scrim_click_closes() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let (open, _handle) = mount_modal_harness();
+    open.set(true);
+    leptos::task::tick().await;
+
+    // Dispatch a bubbling click whose target is the scrim backdrop itself.
+    let scrim = doc
+        .query_selector(".modal-scrim")
+        .unwrap()
+        .expect("scrim present");
+    let init = web_sys::MouseEventInit::new();
+    init.set_bubbles(true);
+    init.set_cancelable(true);
+    let ev = web_sys::MouseEvent::new_with_mouse_event_init_dict("click", &init).unwrap();
+    scrim.dispatch_event(&ev).unwrap();
+    leptos::task::tick().await;
+
+    assert!(
+        doc.query_selector(".modal").unwrap().is_none(),
+        "clicking the scrim backdrop must close the modal"
+    );
+}
+
+// ── Dependencies panel ────────────────────────────────────────────────────────
+
+/// Build a Manifest carrying `n` related-work entries (RW01..RWn), each with a
+/// distinct cite so the filter has something to narrow on.
+fn manifest_with_related_work(n: usize) -> ara_core::Manifest {
+    let related_work = (1..=n)
+        .map(|i| ara_core::RelatedWork {
+            id: format!("RW{i:02}"),
+            cite: format!("Author{i} et al., 20{i:02}"),
+            doi: None,
+            kind: Some("baseline".to_string()),
+            what_changed: None,
+            why: None,
+            adopted: None,
+            claims_affected: vec![],
+        })
+        .collect();
+    ara_core::Manifest {
+        nodes: vec![],
+        links: vec![],
+        bindings: vec![],
+        claims: vec![],
+        bounds: None,
+        paper: None,
+        related_work,
+        concepts: vec![],
+        problem: None,
+        recipes: vec![],
+        exhibits: vec![],
+        built_on: vec![],
+        node_exhibits: vec![],
+    }
+}
+
+#[wasm_bindgen_test]
+async fn dependencies_button_shows_count_and_opens_modal() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest = manifest_with_related_work(3);
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <DependenciesPanel load_state=load_state /> }
+    });
+
+    // Launcher shows the live count.
+    let btn = container
+        .query_selector(".panel-launch-btn")
+        .unwrap()
+        .expect("Dependencies launcher must render with related work");
+    let btn_text = btn.unchecked_ref::<HtmlElement>().inner_text();
+    assert!(
+        btn_text.contains("Dependencies"),
+        "launcher labelled Dependencies"
+    );
+    assert!(btn_text.contains('3'), "launcher shows the live count (3)");
+
+    // Click opens the modal, which lists every RW id.
+    btn.unchecked_ref::<HtmlElement>().click();
+    leptos::task::tick().await;
+
+    let modal = doc
+        .query_selector(".modal")
+        .unwrap()
+        .expect("clicking the launcher opens the modal");
+    let modal_text = modal.unchecked_ref::<HtmlElement>().inner_text();
+    assert!(modal_text.contains("RW01"), "modal lists RW01");
+    assert!(modal_text.contains("RW02"), "modal lists RW02");
+    assert!(modal_text.contains("RW03"), "modal lists RW03");
+}
+
+#[wasm_bindgen_test]
+fn dependencies_button_hidden_at_zero() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest = manifest_with_related_work(0);
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <DependenciesPanel load_state=load_state /> }
+    });
+
+    assert!(
+        container
+            .query_selector(".panel-launch-btn")
+            .unwrap()
+            .is_none(),
+        "a 0 related-work count must hide the Dependencies launcher entirely"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn dependencies_filter_narrows_the_list() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest = manifest_with_related_work(3);
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <DependenciesPanel load_state=load_state /> }
+    });
+
+    // Open the modal.
+    let btn = container
+        .query_selector(".panel-launch-btn")
+        .unwrap()
+        .unwrap();
+    btn.unchecked_ref::<HtmlElement>().click();
+    leptos::task::tick().await;
+
+    // Type "RW02" into the filter → only RW02 survives.
+    let input = doc
+        .query_selector(".panel-filter")
+        .unwrap()
+        .expect("filter input present");
+    let input: web_sys::HtmlInputElement = input.unchecked_into();
+    input.set_value("RW02");
+    let init = web_sys::EventInit::new();
+    init.set_bubbles(true);
+    let ev = web_sys::Event::new_with_event_init_dict("input", &init).unwrap();
+    input.dispatch_event(&ev).unwrap();
+    leptos::task::tick().await;
+
+    let modal = doc.query_selector(".modal").unwrap().unwrap();
+    let text = modal.unchecked_ref::<HtmlElement>().inner_text();
+    assert!(text.contains("RW02"), "filter 'RW02' keeps RW02");
+    assert!(!text.contains("RW01"), "filter 'RW02' drops RW01");
+    assert!(!text.contains("RW03"), "filter 'RW02' drops RW03");
+}
+
+// ── Context / Glossary / Recipes panels ───────────────────────────────────────
+
+/// A Manifest carrying a problem framing, `n` concepts (one with `$…$` LaTeX and
+/// a related-term cross-reference), and `n` recipes.
+fn manifest_with_panels(n: usize) -> ara_core::Manifest {
+    let concepts = (1..=n)
+        .map(|i| ara_core::Concept {
+            term: format!("Concept{i}"),
+            notation: Some(format!("$\\pi^{{({i})}}$")),
+            definition: Some(format!("definition of concept {i}")),
+            boundary: None,
+            related: vec!["ProgressiveNet".to_string()],
+        })
+        .collect();
+    let recipes = (1..=n)
+        .map(|i| ara_core::Recipe {
+            name: format!("recipe{i}"),
+            title: Some(format!("Recipe {i}")),
+            body: format!("step body for recipe {i}"),
+        })
+        .collect();
+    ara_core::Manifest {
+        nodes: vec![],
+        links: vec![],
+        bindings: vec![],
+        claims: vec![],
+        bounds: None,
+        paper: None,
+        related_work: vec![],
+        concepts,
+        problem: Some(ara_core::Problem {
+            statement: Some("the problem statement".to_string()),
+            observations: vec!["O1: observed thing".to_string()],
+            gaps: vec!["G1: the gap".to_string()],
+            insights: vec!["I1: the insight".to_string()],
+        }),
+        recipes,
+        exhibits: vec![],
+        built_on: vec![],
+        node_exhibits: vec![],
+    }
+}
+
+#[wasm_bindgen_test]
+async fn glossary_shows_count_opens_with_latex_and_xref() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+    let (load_state, _) = signal(LoadState::Loaded(manifest_with_panels(2)));
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <GlossaryPanel load_state=load_state /> }
+    });
+
+    let btn = container
+        .query_selector(".panel-launch-btn")
+        .unwrap()
+        .expect("Glossary launcher present with concepts");
+    let btn_text = btn.unchecked_ref::<HtmlElement>().inner_text();
+    assert!(btn_text.contains("Glossary"), "labelled Glossary");
+    assert!(btn_text.contains('2'), "shows the live count (2)");
+
+    btn.unchecked_ref::<HtmlElement>().click();
+    leptos::task::tick().await;
+
+    let modal = doc.query_selector(".modal").unwrap().expect("modal opens");
+    assert_eq!(
+        modal.get_attribute("role").as_deref(),
+        Some("dialog"),
+        "panel opens a role=dialog"
+    );
+    let text = modal.unchecked_ref::<HtmlElement>().inner_text();
+    assert!(text.contains("Concept1"), "lists Concept1");
+    // Inert LaTeX span rendered verbatim as monospace, never interpreted (D3).
+    let latex = modal
+        .query_selector("code.latex-inert")
+        .unwrap()
+        .expect("notation rendered as inert LaTeX");
+    assert!(
+        latex
+            .unchecked_ref::<HtmlElement>()
+            .inner_text()
+            .contains('$'),
+        "inert LaTeX keeps the $…$ delimiters verbatim"
+    );
+    // Related term is a dotted cross-reference chip.
+    assert!(
+        modal.query_selector(".concept-xref").unwrap().is_some(),
+        "related term rendered as a cross-reference chip"
+    );
+}
+
+#[wasm_bindgen_test]
+fn glossary_hidden_at_zero() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+    let (load_state, _) = signal(LoadState::Loaded(manifest_with_panels(0)));
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <GlossaryPanel load_state=load_state /> }
+    });
+    assert!(
+        container
+            .query_selector(".panel-launch-btn")
+            .unwrap()
+            .is_none(),
+        "0 concepts hides the Glossary launcher"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn context_opens_and_hidden_without_problem() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+    let (load_state, _) = signal(LoadState::Loaded(manifest_with_panels(1)));
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <ContextPanel load_state=load_state /> }
+    });
+
+    let btn = container
+        .query_selector(".panel-launch-btn")
+        .unwrap()
+        .expect("Context launcher present when a problem exists");
+    btn.unchecked_ref::<HtmlElement>().click();
+    leptos::task::tick().await;
+    let modal = doc
+        .query_selector(".modal")
+        .unwrap()
+        .expect("context modal opens");
+    let text = modal.unchecked_ref::<HtmlElement>().inner_text();
+    assert!(
+        text.contains("the problem statement"),
+        "shows the statement"
+    );
+    assert!(text.contains("O1: observed thing"), "shows observations");
+
+    // A manifest with no problem hides the launcher.
+    let container2 = body_div(&doc);
+    let mut no_problem = manifest_with_panels(1);
+    no_problem.problem = None;
+    let (ls2, _) = signal(LoadState::Loaded(no_problem));
+    let _h2 = leptos::mount::mount_to(container2.clone(), move || {
+        view! { <ContextPanel load_state=ls2 /> }
+    });
+    assert!(
+        container2
+            .query_selector(".panel-launch-btn")
+            .unwrap()
+            .is_none(),
+        "no problem → no Context launcher"
+    );
+}
+
+#[wasm_bindgen_test]
+async fn recipes_shows_count_and_opens() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+    let (load_state, _) = signal(LoadState::Loaded(manifest_with_panels(4)));
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <RecipesPanel load_state=load_state /> }
+    });
+
+    let btn = container
+        .query_selector(".panel-launch-btn")
+        .unwrap()
+        .expect("Recipes launcher present");
+    let btn_text = btn.unchecked_ref::<HtmlElement>().inner_text();
+    assert!(btn_text.contains("Recipes"), "labelled Recipes");
+    assert!(
+        btn_text.contains('4'),
+        "count = one per solution file (E8 fallback)"
+    );
+
+    btn.unchecked_ref::<HtmlElement>().click();
+    leptos::task::tick().await;
+    let modal = doc
+        .query_selector(".modal")
+        .unwrap()
+        .expect("recipes modal opens");
+    let text = modal.unchecked_ref::<HtmlElement>().inner_text();
+    assert!(text.contains("Recipe 1"), "lists Recipe 1 by title");
+    assert!(
+        text.contains("step body for recipe 1"),
+        "shows the raw body"
     );
 }

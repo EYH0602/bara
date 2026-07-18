@@ -62,6 +62,9 @@ expression: manifest
       "description": "A natural first explanation for plain-net degradation. The authors rule it out by noting BN keeps forward signals at non-zero variance and that backward gradient norms are healthy.",
       "fields": {
         "dead_end": {
+          "hypothesis": null,
+          "failure_mode": null,
+          "lesson": null,
           "why_failed": "With BN in place, signals do not vanish; the plain-34 net still reaches competitive accuracy (24.19% top-1 with 10-crop, Table 3), showing SGD is making progress — just slowly."
         }
       },
@@ -78,6 +81,9 @@ expression: manifest
       "description": "The footnote reports that the authors tried training plain nets for 3× more iterations and still observed the degradation problem.",
       "fields": {
         "dead_end": {
+          "hypothesis": null,
+          "failure_mode": null,
+          "lesson": null,
           "why_failed": "The degradation is not just slow optimization; longer training does not close the gap."
         }
       },
@@ -160,6 +166,9 @@ expression: manifest
       "description": "Authors note Eqn. (1) with a single-layer F is similar to a linear layer.",
       "fields": {
         "dead_end": {
+          "hypothesis": null,
+          "failure_mode": null,
+          "lesson": null,
           "why_failed": "\"We have not observed advantages.\" Authors require F to have ≥2 weighted layers."
         }
       },

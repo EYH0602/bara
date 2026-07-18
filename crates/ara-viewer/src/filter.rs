@@ -131,6 +131,14 @@ mod tests {
             bindings: vec![],
             claims: vec![],
             bounds: None,
+            paper: None,
+            related_work: vec![],
+            concepts: vec![],
+            problem: None,
+            recipes: vec![],
+            exhibits: vec![],
+            built_on: vec![],
+            node_exhibits: vec![],
         }
     }
 
@@ -151,7 +159,12 @@ mod tests {
 
     fn make_dead_end(id: &str, label: Option<&str>) -> Node {
         Node {
-            fields: NodeFields::DeadEnd { why_failed: None },
+            fields: NodeFields::DeadEnd {
+                hypothesis: None,
+                failure_mode: None,
+                lesson: None,
+                why_failed: None,
+            },
             ..make_node(id, NodeKind::DeadEnd, label)
         }
     }

@@ -5,9 +5,12 @@
 //! The binary entry point lives in `src/main.rs`.
 
 pub mod canvas;
+pub mod deps;
 pub mod detail;
 pub mod filter;
 pub mod kind;
+pub mod modal;
+pub mod panels;
 pub mod replay;
 pub mod scene;
 pub mod source;
@@ -18,10 +21,12 @@ pub mod tree;
 
 use std::collections::HashSet;
 
-use ara_core::NodeId;
+use ara_core::{NodeId, PaperMeta};
+use deps::DependenciesPanel;
 use detail::DetailPane;
 use filter::FilterState;
 use leptos::prelude::*;
+use panels::{ContextPanel, GlossaryPanel, RecipesPanel};
 use replay::{ReplayBar, ReplayState};
 use scene::{GraphRenderer, GraphView, LayoutView, SvgRenderer};
 use source::{ManifestSource, connect_live, fetch_manifest};
@@ -134,11 +139,20 @@ pub fn App() -> impl IntoView {
     view! {
         <header class="app-header">
             <div class="header-title">
-                <h1>"ARA Viewer"</h1>
-                <span class="header-subtitle">"Agent-Native Research Artifact"</span>
-                // INERT: artifact abstract/summary would render here once the
-                // Manifest schema carries an `abstract` field.  Until then this
-                // block is omitted entirely — no placeholder UI.
+                // Paper metadata (title, authors, venue/year, collapsible
+                // Abstract) when the loaded manifest carries a titled PaperMeta;
+                // otherwise the "ARA Viewer" brand. See `PaperHeader`.
+                <PaperHeader load_state=load_state />
+            </div>
+            // Panel launchers (right-aligned, before the filter toolbar). Each
+            // launcher owns its button + modal. A launcher hides itself when its
+            // data is absent. Order matches the hub: Context · Glossary ·
+            // Dependencies · Recipes.
+            <div class="panel-launchers">
+                <ContextPanel load_state=load_state />
+                <GlossaryPanel load_state=load_state />
+                <DependenciesPanel load_state=load_state />
+                <RecipesPanel load_state=load_state />
             </div>
             // role="toolbar" gives AT users a named landmark for the filter controls.
             <div class="toolbar-area" role="toolbar" aria-label="Filters">
@@ -187,6 +201,85 @@ pub fn App() -> impl IntoView {
                 <DetailPane load_state=load_state selected=selected />
             </section>
         </main>
+    }
+}
+
+/// Assemble the one-line paper-meta byline: authors joined with `", "`, then
+/// venue and year (e.g. `A. Vaswani, N. Shazeer · NeurIPS 2017`).
+///
+/// Every part is optional. Absent fields are dropped cleanly — no leading,
+/// trailing, or doubled `·` separators, and no stray space when only one of
+/// venue/year is present.
+pub fn paper_meta_line(paper: &PaperMeta) -> String {
+    let authors = paper.authors.join(", ");
+    let venue_year = match (paper.venue.as_deref(), paper.year.as_deref()) {
+        (Some(v), Some(y)) => format!("{v} {y}"),
+        (Some(v), None) => v.to_string(),
+        (None, Some(y)) => y.to_string(),
+        (None, None) => String::new(),
+    };
+    // Join the non-empty segments with a middot; a single segment yields no
+    // separator, and an all-empty PaperMeta yields "".
+    [authors, venue_year]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" \u{00b7} ")
+}
+
+/// The header title block.
+///
+/// Renders the artifact's paper metadata when the loaded manifest carries a
+/// [`PaperMeta`] with a title: the title as `<h1>`, an authors/venue/year
+/// byline, and — when present — the abstract in a `<details>` that stays
+/// collapsed until the user expands it (so it never pushes the toolbar down).
+///
+/// In every other state (loading, error, no `paper`, or a `paper` without a
+/// title) it falls back to the "ARA Viewer" brand — the empty/loading state,
+/// matching the hub where a bare artifact shows no paper header.
+///
+/// Split out of [`App`] so the browser tests can mount it directly with an
+/// in-test [`LoadState`].
+#[component]
+pub fn PaperHeader(load_state: ReadSignal<LoadState>) -> impl IntoView {
+    move || {
+        // Clone only the paper metadata out of the load state, not the whole
+        // Manifest (nodes/links/claims), which the header never reads.
+        let paper = load_state.with(|s| match s {
+            LoadState::Loaded(m) => m.paper.clone(),
+            _ => None,
+        });
+        // Only a titled PaperMeta earns the paper header; anything else (no
+        // PAPER.md, or a PAPER.md without a title) shows the brand.
+        match paper.filter(|p| p.title.is_some()) {
+            Some(p) => {
+                let title = p.title.clone().unwrap_or_default();
+                let meta_line = paper_meta_line(&p);
+                view! {
+                    <h1>{title}</h1>
+                    // Byline: omit entirely when authors + venue + year are all
+                    // absent, so no empty line renders.
+                    {(!meta_line.is_empty()).then(|| view! {
+                        <span class="paper-meta">{meta_line}</span>
+                    })}
+                    // Abstract: collapsed by default (no `open`), full-width on
+                    // its own line, and internally scrollable so a long abstract
+                    // can't overflow the header horizontally.
+                    {p.abstract_.clone().map(|abs| view! {
+                        <details class="paper-abstract">
+                            <summary>"Abstract"</summary>
+                            <p class="paper-abstract-text">{abs}</p>
+                        </details>
+                    })}
+                }
+                .into_any()
+            }
+            None => view! {
+                <h1>"ARA Viewer"</h1>
+                <span class="header-subtitle">"Agent-Native Research Artifact"</span>
+            }
+            .into_any(),
+        }
     }
 }
 
@@ -278,5 +371,62 @@ pub fn MapPane(
                 .into_any()
             }
         }
+    }
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::paper_meta_line;
+    use ara_core::PaperMeta;
+
+    fn meta(authors: &[&str], venue: Option<&str>, year: Option<&str>) -> PaperMeta {
+        PaperMeta {
+            authors: authors.iter().map(|s| s.to_string()).collect(),
+            venue: venue.map(str::to_string),
+            year: year.map(str::to_string),
+            ..PaperMeta::default()
+        }
+    }
+
+    #[test]
+    fn meta_line_full() {
+        let m = meta(&["A. Vaswani", "N. Shazeer"], Some("NeurIPS"), Some("2017"));
+        assert_eq!(
+            paper_meta_line(&m),
+            "A. Vaswani, N. Shazeer \u{00b7} NeurIPS 2017"
+        );
+    }
+
+    #[test]
+    fn meta_line_authors_only() {
+        let m = meta(&["A. Vaswani"], None, None);
+        assert_eq!(paper_meta_line(&m), "A. Vaswani");
+    }
+
+    #[test]
+    fn meta_line_venue_without_year() {
+        let m = meta(&["A. Vaswani"], Some("NeurIPS"), None);
+        assert_eq!(paper_meta_line(&m), "A. Vaswani \u{00b7} NeurIPS");
+    }
+
+    #[test]
+    fn meta_line_year_without_venue() {
+        let m = meta(&["A. Vaswani"], None, Some("2017"));
+        assert_eq!(paper_meta_line(&m), "A. Vaswani \u{00b7} 2017");
+    }
+
+    #[test]
+    fn meta_line_venue_year_no_authors() {
+        // No authors, no leading separator.
+        let m = meta(&[], Some("NeurIPS"), Some("2017"));
+        assert_eq!(paper_meta_line(&m), "NeurIPS 2017");
+    }
+
+    #[test]
+    fn meta_line_all_absent_is_empty() {
+        let m = meta(&[], None, None);
+        assert_eq!(paper_meta_line(&m), "");
     }
 }

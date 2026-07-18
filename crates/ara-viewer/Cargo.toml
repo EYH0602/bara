@@ -38,7 +38,23 @@ wasm-bindgen-futures = "0.4"
 futures-util = { version = "0.3", default-features = false }
 # document.baseURI + URL resolution → absolute ws:// URL for the live socket,
 # resolved relative to the page base so it works under the hub's `<base>` tag.
-web-sys = { version = "0.3", features = ["Window", "Document", "Node", "Url"] }
+# The Modal (src/modal.rs) adds the focus-trap / keydown / class-list APIs it
+# needs behind `#[cfg(target_arch = "wasm32")]`: Element, HtmlElement,
+# KeyboardEvent, Event/EventTarget, MouseEvent, NodeList, DomTokenList.
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Node",
+    "Url",
+    "Element",
+    "HtmlElement",
+    "Event",
+    "EventTarget",
+    "KeyboardEvent",
+    "MouseEvent",
+    "NodeList",
+    "DomTokenList",
+] }
 
 # wasm-bindgen-test dev-deps: gated to wasm32 so `cargo test --workspace`
 # (native host build) skips them entirely.  The browser tests in
@@ -59,6 +75,7 @@ web-sys = { version = "0.3", features = [
     "CssStyleDeclaration",
     "DomTokenList",
     "Event",
+    "EventInit",
     "EventTarget",
     "KeyboardEvent",
     "KeyboardEventInit",

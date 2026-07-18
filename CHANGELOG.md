@@ -6,6 +6,59 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- Viewer Context, Glossary, and Recipes panels — three more consumers of the
+  shared `Modal`. Each has a header launcher (hidden when its data is absent):
+  Context (`logic/problem.md` — statement, observations, gaps, key insight),
+  Glossary (a count of `logic/concepts.md` terms, each with notation/definition/
+  boundary and dotted cross-reference chips for related terms), and Recipes (one
+  per `logic/solution/*.md` file). Concept/recipe LaTeX (`$…$`) renders as inert
+  monospace, never interpreted. Each panel carries its own case-insensitive
+  filter.
+- Viewer Dependencies panel, built on a new shared accessible `Modal` component.
+  A header launcher button shows a live count of the manifest's `related_work`
+  (hidden entirely at a 0 count) and opens a modal listing every reference in
+  source order (id, citation, type, DOI, delta, adopted elements, affected-claim
+  chips) with its own case-insensitive filter input. The `Modal` is a reusable
+  a11y primitive (`role="dialog"` + `aria-modal` + `aria-labelledby`) with a
+  full focus trap: focus moves into the dialog on open, Tab/Shift+Tab wrap at
+  both ends, Esc and scrim-click close, and focus returns to the invoking
+  element on close. It goes full-screen below 800px.
+- Viewer detail pane: per-node **BUILT ON** and **RESULT** blocks in the
+  corrected hub order. BUILT ON renders chips for the related work a node builds
+  on (id + citation, resolved from `built_on` → `related_work`); RESULT renders
+  chips for the exhibits linked to a node (id + figure/table label, resolved
+  from `node_exhibits` → `exhibits`). Both omit entirely when empty. The
+  experiment `result` field is relabelled **WHAT IT DID**. (REASONING is
+  intentionally deferred; exhibit table/markdown bodies are not rendered yet.)
+- Viewer paper header: title, authors, venue/year, and a collapsible Abstract
+  from `PAPER.md`. When the loaded manifest carries a titled `PaperMeta` the app
+  header shows the paper metadata (Abstract collapsed by default); otherwise it
+  falls back to the "ARA Viewer" brand.
+- Model `pivot` nodes (`from`/`to`/`trigger`) and the
+  `hypothesis`/`failure_mode`/`lesson` fields on `dead_end` nodes, which
+  previously degraded to unknown-field warnings.
+- Parse the artifact logic layer into the `Manifest`. `parse_dir` now reads
+  `PAPER.md` frontmatter (`paper`), `logic/problem.md` (`problem`),
+  `logic/concepts.md` (`concepts`), `logic/related_work.md` (`related_work`),
+  and every `logic/solution/*.md` (`recipes`, one per file, sorted). The readers
+  are tolerant — an absent file is skipped silently, a malformed present file
+  adds a warning without failing the parse. Manifest also gains the (currently
+  empty) `exhibits`/`built_on`/`node_exhibits` fields, reserved for a later
+  evidence/resolution task. Old manifests and artifacts lacking these files
+  round-trip and serialize identically (all new fields skip when empty).
+- Parse the `evidence/` layer into `Manifest.exhibits` and resolve node→exhibit
+  (`node_exhibits`) and node→related-work (`built_on`) edges. `parse_dir` reads
+  `evidence/README.md` (a column-name-tolerant index that handles the eight real
+  header shapes, including reordered, `Key refs`, `Used by`, and no-claims-column
+  tables) plus every `evidence/figures/*.md` and `evidence/tables/*.md` body
+  (stored verbatim). Each exhibit's supported claims come from its index row or,
+  when the index has none, from an inline `Supports: C##` line in the body. The
+  two resolution passes link a node to an exhibit or related-work entry when
+  their claim sets intersect, iterating in source order and deduplicating. The
+  reader is tolerant — an absent `evidence/` dir is skipped silently, and a
+  missing body file or unindexed body warns without failing the parse.
+
 ## [0.1.6] - 2026-07-13
 
 ### Added
