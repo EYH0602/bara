@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- Release workflow now auto-pushes the generated Homebrew formula (`ara.rb`) to
+  `ARA-Labs/homebrew-tap` on every tag via cargo-dist's `homebrew` publish job
+  (`publish-jobs = ["homebrew"]`). A tag is now the only manual release step; the
+  formula no longer has to be committed to the tap by hand. The publish job reads
+  a cross-repo push token from the `HOMEBREW_TAP_TOKEN` secret. (#25)
+
 ## [0.1.7] - 2026-07-17
 
 ### Added
