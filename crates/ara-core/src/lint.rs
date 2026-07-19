@@ -3,10 +3,12 @@
 //!
 //! This is deliberately **separate** from [`crate::parse`]: `parse_sources` /
 //! `parse_dir` normalize an artifact into a [`crate::Manifest`] and are tolerant
-//! by design (aliases like `reason:`/`justification:` are accepted silently).
+//! by design — unrecognized keys like `reason:` / `justification:` don't error;
+//! they are **not** `serde` aliases of `why_failed:` / `rationale:` but fall into
+//! `extra`, surface as `unknown field` warnings, and their values are **dropped**.
 //! This module instead works on the *unparsed* text so it can point at the exact
-//! line/byte span a later applier must rewrite, and it is **not** wired into
-//! parsing — `ara validate` behavior is unchanged.
+//! line/byte span a later applier rewrites to **recover** those dropped values,
+//! and it is **not** wired into parsing — `ara validate` behavior is unchanged.
 //!
 //! Each [`LintDiagnostic`] carries a [`LintRuleId`], a human message, the file
 //! it lives in, and (when fixable) a [`FixCandidate`] describing the edit as
