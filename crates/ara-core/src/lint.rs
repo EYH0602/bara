@@ -152,15 +152,28 @@ impl LintReport {
 ///
 /// Missing files are tolerated: an absent `claims.md` (or `exploration_tree.yaml`)
 /// simply contributes no diagnostics rather than erroring or panicking. This
-/// never reads the parse layer — it is a pure text pass.
+/// never reads the parse layer — it is a pure text pass. It is a thin wrapper
+/// over [`check_sources`], reading the two files then delegating.
 #[cfg(feature = "native")]
 pub fn check_dir(dir: &std::path::Path) -> LintReport {
-    let mut diagnostics = Vec::new();
-    if let Ok(text) = std::fs::read_to_string(dir.join("trace/exploration_tree.yaml")) {
-        diagnostics.extend(lint_tree(&text));
-    }
-    if let Ok(text) = std::fs::read_to_string(dir.join("logic/claims.md")) {
-        diagnostics.extend(lint_claims(&text));
+    let tree = std::fs::read_to_string(dir.join("trace/exploration_tree.yaml")).ok();
+    let claims = std::fs::read_to_string(dir.join("logic/claims.md")).ok();
+    check_sources(tree.as_deref().unwrap_or_default(), claims.as_deref())
+}
+
+/// Runs the format-lint rules over in-memory `trace/exploration_tree.yaml` text
+/// and optional `logic/claims.md` text, returning findings in source order
+/// (tree first, then claims).
+///
+/// This is the pure entry that [`check_dir`] wraps after reading the two files,
+/// and that the fix applier ([`crate::fix::fix_dir`]) uses to re-detect drift on
+/// edited text in memory without touching the filesystem. Native only, because
+/// the scanning rules themselves are native-gated.
+#[cfg(feature = "native")]
+pub fn check_sources(tree_yaml: &str, claims_md: Option<&str>) -> LintReport {
+    let mut diagnostics = lint_tree(tree_yaml);
+    if let Some(md) = claims_md {
+        diagnostics.extend(lint_claims(md));
     }
     LintReport { diagnostics }
 }

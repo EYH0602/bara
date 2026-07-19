@@ -154,6 +154,7 @@ dependencies = [
  "serde",
  "serde-saphyr",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
