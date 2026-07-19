@@ -119,6 +119,43 @@ Open http://127.0.0.1:8080 and the viewer live-reloads as you edit the artifact.
 Any directory under `corpus-external/ara-paperbench/artifacts/` (e.g.
 `paperbench/*`, `rebench/*`) is a valid ARA to serve.
 
+## Lint an ARA (`ara check`)
+
+`ara check` is a fixable linter for the ARA format — think `ruff` for an ARA
+directory. It composes the `validate` diagnostics with a small set of
+auto-fixable format rules (`ARA001`..`ARA004`) that canonicalize the common
+drift in [`docs/ara-format-feedback.md`](docs/ara-format-feedback.md) (root
+dialect, dead-end/decision key aliases, claim-header style):
+
+```bash
+ara check ./my-ara          # report; exits non-zero on errors or fixable issues
+ara check ./my-ara --fix    # apply the safe fixes in place, then re-check
+ara check ./my-ara --strict # also fail on warnings
+ara check ./my-ara --json   # machine-readable report for CI
+```
+
+Fixes are surgical text edits guarded by a re-parse safety check, so a source
+file is never left corrupted and `--fix` is idempotent. See
+[`docs/stage-5-check.md`](docs/stage-5-check.md) for the design.
+
+### Gate an ARA in CI
+
+Drop the reusable composite action into a repo that holds an ARA to fail CI when
+the artifact drifts:
+
+```yaml
+# .github/workflows/ara.yml (in your repo)
+jobs:
+  ara-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ARA-Labs/ara-cli/.github/actions/check@v0
+        with:
+          path: ./my-ara
+          version: v0.1.10   # pin until check is in the newest release
+```
+
 ## Build
 
 ```bash
