@@ -65,27 +65,32 @@ assets and an up-to-date Homebrew formula. No manual formula edits.
 - License MPL-2.0; repo `ARA-Labs/ara-cli` is public.
 - Existing `.github/workflows/ci.yml` is unaffected (separate `release.yml`).
 
-## Status (2026-07-12)
+## Status (2026-07-18)
 
-Config + workflow are in place; the release itself is the remaining manual step.
+Config + workflow + autopush are in place; cutting the release tag is the only
+remaining manual step.
 
 - [x] Tap repo `ARA-Labs/homebrew-tap` created (public), README written.
 - [x] cargo-dist 0.32.0 config in `Cargo.toml` (`[workspace.metadata.dist]`):
       targets = darwin-arm64 + linux-x64, installers = shell + homebrew,
       `tap = "ARA-Labs/homebrew-tap"`, `allow-dirty = ["ci"]`,
-      **`publish-jobs` omitted** (autopush deferred).
+      `publish-jobs = ["homebrew"]` (autopush enabled, ARA-Labs/ara-cli#25).
 - [x] `ara-viewer` excluded (`dist = false`); `ara-cli` shipped with
       `formula = "ara"` → `class Ara` / `brew install ARA-Labs/tap/ara`.
 - [x] `.github/workflows/release.yml` generated; all `uses:` re-pinned to full
-      commit SHAs to match `ci.yml`.
+      commit SHAs to match `ci.yml`. Now includes the `publish-homebrew-formula`
+      job that checks out `ARA-Labs/homebrew-tap` with the `HOMEBREW_TAP_TOKEN`
+      secret and commits `Formula/ara.rb` on each tag.
 - [x] `dist plan` verified: only the `ara` bin ships, both targets, tarballs +
       checksums + `ara-installer.sh` + `ara.rb`.
-- [x] Version bumped `0.1.4 → 0.1.5` (workspace + lockfile), CHANGELOG entry,
+- [x] Version bumped (workspace + lockfile), CHANGELOG entry,
       README install section updated.
-- [x] Autopush tracked in ARA-Labs/ara-cli#25.
-- [ ] **Push tag `v0.1.5`** → release workflow builds + attaches artifacts.
-- [ ] **Commit `ara.rb`** from the release asset into the tap (`Formula/ara.rb`).
+- [ ] **Provision `HOMEBREW_TAP_TOKEN`** (fine-grained PAT, Contents:rw on
+      `ARA-Labs/homebrew-tap` only) as a repo secret on `ARA-Labs/ara-cli`.
+- [ ] **Push a release tag** → release workflow builds + attaches artifacts and
+      auto-pushes `Formula/ara.rb` to the tap (no hand-commit needed).
 - [ ] Verify `brew install ARA-Labs/tap/ara` on macOS arm64 + Linux x64.
+- [ ] Drop the "commit the formula by hand" note from the tap repo README.
 
 ## Implementation steps
 
