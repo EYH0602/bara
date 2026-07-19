@@ -138,6 +138,69 @@ jobs:
       - name: Run browser tests (headless Chrome)
         run: wasm-pack test --headless --chrome crates/ara-viewer --locked
 
+  ara-check:
+    name: ara-check
+    runs-on: ubuntu-24.04
+    # Dogfoods the `ara check` linter on this repo's own fixtures. It builds `ara`
+    # from the CURRENT checkout instead of using the `.github/actions/check`
+    # composite action on purpose: that action installs a RELEASED binary, but
+    # `ara check` isn't in any release yet (latest release is v0.1.8; it first
+    # ships in v0.1.10). Once v0.1.10+ is out, downstream repos use the composite
+    # action — but this repo always dogfoods HEAD, so it builds from source.
+    # No `submodules:` — the two official fixtures ship in a plain checkout.
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      - name: Build ara
+        run: cargo build --locked
+      - name: Check official fixtures (expect PASS)
+        run: |
+          set -e
+          ARA=./target/debug/ara
+          for dir in \
+            crates/ara-core/tests/fixtures/official/minimal-artifact \
+            crates/ara-core/tests/fixtures/official/resnet-ara-example; do
+            echo "=== ara check $dir (expect exit 0) ==="
+            "$ARA" check "$dir"
+          done
+      - name: Dogfood the --fix round-trip on a drifted artifact
+        run: |
+          set -e
+          ARA=./target/debug/ara
+          dir="$RUNNER_TEMP/drifted-ara"
+          rm -rf "$dir"
+          mkdir -p "$dir/trace" "$dir/logic"
+          # A dead_end node using the `reason:` alias instead of the canonical
+          # `why_failed:` — ARA002, a fixable drift.
+          cat > "$dir/trace/exploration_tree.yaml" <<'YAML'
+          tree:
+            - id: N01
+              type: question
+              title: "Does approach X work?"
+              children:
+                - id: N02
+                  type: dead_end
+                  title: "Tried approach X"
+                  reason: "Gradients exploded during training"
+          YAML
+          printf '# Claims\n' > "$dir/logic/claims.md"
+
+          echo "=== plain check: expect FAIL (exit 1) and a [fixable] line ==="
+          set +e
+          out=$("$ARA" check "$dir" 2>&1); rc=$?
+          set -e
+          echo "$out"
+          test "$rc" -eq 1
+          echo "$out" | grep -q '\[fixable\]'
+
+          echo "=== check --fix: expect PASS (exit 0) ==="
+          "$ARA" check --fix "$dir"
+
+          echo "=== re-run plain check on the fixed dir: expect PASS (exit 0) ==="
+          "$ARA" check "$dir"
+
+          echo "ALL ara-check DOGFOOD STEPS PASSED"
+
   docker:
     name: docker
     runs-on: ubuntu-24.04
