@@ -43,11 +43,24 @@ premature churn — they get renamed alongside the real definition later.
 - Keep `"Recipe 1"` / `"step body for recipe 1"` assertions: those are fixture titles/
   bodies from `manifest_with_panels`, still valid content.
 
-### 3. Version + changelog (functional change → patch bump)
-- `Cargo.toml`: bump `version = "0.1.8"` → `"0.1.9"`. **Note:** `v0.1.8` is already
-  tagged, so 0.1.8 is taken; the next patch is 0.1.9. (Flag to maintainer: the
+### 3. Docs (`docs/hub-parity.md`) — required by CLAUDE.md, ship in this PR
+Eng-review finding (confidence 9/10): the docs go stale on this change and one note
+becomes factually wrong. Fix in the same commit:
+- Line ~6 and line ~132 (`**Recipes** (solution files)`): rename the panel reference
+  from "Recipes" to "Solution files".
+- Lines ~146–148, the E8 deferred note (`The "recipe" unit (E8) — undefined upstream;
+  the Recipes count uses the fallback ... pending a maintainer answer.`): rewrite from
+  "pending" to **resolved per #35** — maintainer decided to label the panel
+  "Solution files", keep the per-file count, and defer the canonical "recipe" unit
+  until something needs to reference a single one.
+- Leave the internal `recipes: Vec<Recipe>` field-mapping row (~line 68) as-is — that
+  documents the manifest field, which is not renamed.
+
+### 4. Version + changelog (functional change → patch bump)
+- `Cargo.toml`: bump `version = "0.1.8"` → `"0.1.9"`. `v0.1.8` is already tagged, so
+  0.1.8 is taken; next patch is 0.1.9. (Flag to maintainer, separate housekeeping: the
   `[Unreleased]` homebrew entries were never rolled under a `## [0.1.8]` heading despite
-  the tag — separate housekeeping, not part of this PR.)
+  the tag — not part of this PR.)
 - `CHANGELOG.md` under `## [Unreleased]` → `### Changed`:
   `- Viewer: renamed the Recipes panel to "Solution files" so its count is honestly a`
   `  per-file count of `logic/solution/*.md` rather than an ungrounded "recipe" count`
@@ -62,6 +75,9 @@ premature churn — they get renamed alongside the real definition later.
 - Manual: `cargo run -- serve` on `arc-agi3/ls20` (2 files) and the DoD artifact
   (4 files); confirm the launcher reads "Solution files 2" / "Solution files 4" and the
   modal lists each file's body.
+- Grep check: `grep -rn '"[^"]*Recipe' crates/ara-viewer/src/` returns nothing after
+  the edit (no user-facing "Recipe" label left behind); `docs/hub-parity.md` no longer
+  says the recipe unit is "pending".
 
 ## Out of scope (deferred per #35)
 
@@ -73,3 +89,19 @@ premature churn — they get renamed alongside the real definition later.
 ## Follow-up
 
 - Post the PR link on #35 and close the issue once merged.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | — |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | — |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | issues_open→resolved | 1 issue (stale docs), folded into plan; 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | — |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
+
+- **VERDICT:** ENG CLEARED — architecture/tests/perf clean; the one finding (stale
+  `docs/hub-parity.md` + resolved E8 note) is now step 3 of the plan. Version resolved to
+  0.1.9. Ready to implement.
+
+NO UNRESOLVED DECISIONS
