@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-07-19
+
 ### Added
 - `ara check <dir>` — a linter/format-checker that composes the validate layer
   (`parse_dir` errors/warnings) with the format-lint layer (`check_dir`, whose
@@ -28,7 +30,9 @@ All notable changes to this project are documented here. The format follows
   `ARA-Labs/homebrew-tap` on every tag via cargo-dist's `homebrew` publish job
   (`publish-jobs = ["homebrew"]`). A tag is now the only manual release step; the
   formula no longer has to be committed to the tap by hand. The publish job reads
-  a cross-repo push token from the `HOMEBREW_TAP_TOKEN` secret. (#25)
+  a cross-repo push token from the `HOMEBREW_TAP_TOKEN` secret. Temporarily
+  disabled in #37 while the token awaited org approval; re-enabled once the
+  token landed. (#25, #37)
 
 ## [0.1.7] - 2026-07-17
 
