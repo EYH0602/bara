@@ -2,8 +2,10 @@
 //!
 //! Installed via `cargo install ara-cli`, this ships a binary named `ara`.
 //! Stage 1 provides `ara validate`; Stage 2 adds `ara layout`; Stage 4 adds
-//! `ara serve`.
+//! `ara serve`. `ara check` composes the validate and format-lint layers into a
+//! linter/format-checker with an optional `--fix`.
 
+mod check;
 mod serve;
 
 use std::path::PathBuf;
@@ -25,6 +27,8 @@ enum Command {
     Validate(ValidateArgs),
     /// Compute a layered DAG layout and emit the positioned manifest as JSON.
     Layout(LayoutArgs),
+    /// Lint an ARA artifact (validate + format checks), optionally auto-fixing.
+    Check(check::CheckArgs),
     /// Serve an ARA directory with a live-reloading web viewer.
     Serve(serve::ServeArgs),
 }
@@ -58,6 +62,7 @@ fn main() -> ExitCode {
     match cli.command {
         Command::Validate(args) => validate(args),
         Command::Layout(args) => layout_cmd(args),
+        Command::Check(args) => check::run(args),
         Command::Serve(args) => serve::run(args),
     }
 }

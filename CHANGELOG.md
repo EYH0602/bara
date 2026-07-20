@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- `ara check <dir>` — a linter/format-checker that composes the validate layer
+  (`parse_dir` errors/warnings) with the format-lint layer (`check_dir`, whose
+  diagnostics carry a rule id like `ARA002` and a `[fixable]` marker). Supports
+  `--fix` (applies the safe fixes in place via `fix_dir`, then re-checks),
+  `--strict` (warnings fail), and `--json` (a machine-readable composed report for
+  CI). Exit codes: `0` clean, `1` errors or unfixed fixable issues, `2` internal
+  failure (bad target path, unreadable tree, JSON serialization error, or a failed
+  `--fix` write) (#39).
+- Reusable composite GitHub Action (`.github/actions/check`) that installs a
+  released `ara` binary and runs `ara check` on an artifact path, so a downstream
+  repo can gate its ARA in CI by referencing
+  `ARA-Labs/ara-cli/.github/actions/check@v0` (#39).
+
 ### Changed
 - Viewer: renamed the Recipes panel to "Solution files" so its count is honestly a
   per-file count of `logic/solution/*.md` rather than an ungrounded "recipe" count

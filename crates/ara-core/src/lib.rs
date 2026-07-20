@@ -10,10 +10,15 @@
 
 mod claims;
 pub mod layout;
+pub mod lint;
 pub mod manifest;
 mod parse;
 pub mod report;
 mod schema;
+// The fix applier reads/writes source files and re-parses through `parse_dir`'s
+// building blocks, so it is native-only like `check_dir`/`parse_dir`.
+#[cfg(feature = "native")]
+mod fix;
 // The `PAPER.md` / `logic/*` / `evidence/` readers are consumed only by the
 // native `parse_dir`; gating them keeps the wasm client build (which only
 // deserializes the already-built manifest) free of dead-code warnings.
@@ -31,6 +36,13 @@ pub use manifest::{
     RelatedWork,
 };
 pub use report::{Diagnostic, ParseReport, Severity};
+
+pub use lint::{FixCandidate, LintDiagnostic, LintFile, LintReport, LintRuleId};
+#[cfg(feature = "native")]
+pub use lint::{check_dir, check_sources};
+
+#[cfg(feature = "native")]
+pub use fix::{AppliedFix, FixOutcome, SkippedFix, fix_dir};
 
 #[cfg(feature = "native")]
 pub use parse::parse_dir;

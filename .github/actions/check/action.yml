@@ -1,0 +1,80 @@
+# Composite action a downstream repo references as
+# `ARA-Labs/ara-cli/.github/actions/check@v0` to gate its ARA artifact in CI.
+#
+# It installs a RELEASED `ara` binary via cargo-dist's shell installer and then
+# runs `ara check` on the given artifact directory. Because it installs a
+# published release, the `ara check` subcommand must exist in the pinned release
+# (it first ships in 0.1.10; pin `version:` to v0.1.10 or later, or use the
+# default `latest` once 0.1.10+ is the newest release).
+name: "ARA check"
+description: "Install a released `ara` binary and lint/validate an ARA artifact directory."
+branding:
+  icon: "check-circle"
+  color: "purple"
+
+inputs:
+  path:
+    description: "Path to the ARA artifact directory to check (contains `trace/` and `logic/`)."
+    required: true
+  strict:
+    description: "Pass `--strict` (treat warnings as errors) when truthy."
+    required: false
+    default: "false"
+  version:
+    description: "Release tag to install (e.g. `v0.1.10`), or `latest` for the newest release."
+    required: false
+    default: "latest"
+  args:
+    description: "Extra args appended verbatim to the `ara check` invocation (escape hatch)."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    # Install the released `ara` binary with cargo-dist's shell installer.
+    # - `latest` resolves via GitHub's /releases/latest/download/<asset> redirect
+    #   to the newest release's `ara-installer.sh`.
+    # - Any other value is treated as a release tag and pins the download to that
+    #   exact release: /releases/download/<tag>/ara-installer.sh. Pinning to a tag
+    #   makes the gate reproducible and immune to a later release changing behavior.
+    # The installer drops `ara` into CARGO_HOME (`~/.cargo/bin`), already on PATH
+    # on GitHub-hosted runners.
+    # Inputs are passed via `env:` and read as shell variables (never
+    # interpolated with `${{ }}` into the script body) to avoid workflow
+    # script injection from a caller-supplied `version`/`path`/`args`.
+    - name: Install ara
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        if [ "$INPUT_VERSION" = "latest" ]; then
+          url="https://github.com/ARA-Labs/ara-cli/releases/latest/download/ara-installer.sh"
+        else
+          url="https://github.com/ARA-Labs/ara-cli/releases/download/${INPUT_VERSION}/ara-installer.sh"
+        fi
+        echo "Installing ara from: $url"
+        curl --proto '=https' --tlsv1.2 -LsSf "$url" | sh
+
+    # Build and run `ara check "<path>"`, appending `--strict` when the `strict`
+    # input is truthy and the `args` escape hatch when it is non-empty.
+    - name: Run ara check
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_STRICT: ${{ inputs.strict }}
+        INPUT_ARGS: ${{ inputs.args }}
+      run: |
+        set -euo pipefail
+        cmd=(ara check "$INPUT_PATH")
+        case "$INPUT_STRICT" in
+          true|True|TRUE|1|yes|on) cmd+=(--strict) ;;
+        esac
+        if [ -n "$INPUT_ARGS" ]; then
+          # Word-split the escape-hatch args intentionally.
+          # shellcheck disable=SC2206
+          cmd+=($INPUT_ARGS)
+        fi
+        echo "Running: ${cmd[*]}"
+        "${cmd[@]}"
