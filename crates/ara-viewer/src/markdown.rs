@@ -167,7 +167,10 @@ mod tests {
                 !html.contains("javascript:"),
                 "entity-encoded scheme leaked for {md:?}: {html}"
             );
-            assert!(html.contains("href=\"#\""), "not rewritten for {md:?}: {html}");
+            assert!(
+                html.contains("href=\"#\""),
+                "not rewritten for {md:?}: {html}"
+            );
         }
     }
 
@@ -181,7 +184,10 @@ mod tests {
     #[test]
     fn keeps_safe_and_relative_links() {
         let html = render_exhibit_body("[a](https://example.com) and [b](./local.md)");
-        assert!(html.contains("https://example.com"), "https dropped: {html}");
+        assert!(
+            html.contains("https://example.com"),
+            "https dropped: {html}"
+        );
         assert!(html.contains("./local.md"), "relative link dropped: {html}");
     }
 
