@@ -843,6 +843,43 @@ fn exhibit_body_renders_table_in_scroll_container() {
     );
 }
 
+// ── Test: an empty exhibit body renders the chip but no body container ─────────
+
+/// The linkage fixture's E01 has an empty `body`. The result-block must still
+/// render (the chip), but the empty body must be skipped — no `.exhibit-body`
+/// div for a blank body (`!body.trim().is_empty()` guard, detail.rs).
+#[wasm_bindgen_test]
+fn empty_exhibit_body_renders_no_body_container() {
+    let doc = web_sys::window().unwrap().document().unwrap();
+    let container = body_div(&doc);
+
+    let manifest = parse_manifest(LINKAGE_FIXTURE_JSON).expect("linkage fixture must parse");
+    let selected: RwSignal<Option<ara_core::NodeId>> =
+        RwSignal::new(Some(ara_core::NodeId::new("N01")));
+    let (load_state, _) = signal(LoadState::Loaded(manifest));
+
+    let _handle = leptos::mount::mount_to(container.clone(), move || {
+        view! { <DetailPane load_state=load_state selected=selected /> }
+    });
+
+    // The result-block (with its chip) renders...
+    assert!(
+        container
+            .query_selector("div.result-block")
+            .unwrap()
+            .is_some(),
+        "result-block must render for a node with an exhibit"
+    );
+    // ...but the empty body produces no body container.
+    assert!(
+        container
+            .query_selector("div.exhibit-body")
+            .unwrap()
+            .is_none(),
+        "an empty exhibit body must NOT render a .exhibit-body div"
+    );
+}
+
 // ── Test: layout toggle flips the active segment + drives the signal ──────────
 
 /// Mounts `LayoutToggle` bound to a `layout` signal. Asserts:
