@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.11] - 2026-07-20
 
 ### Fixed
 - Viewer: rendered exhibit-body tables now get the markdown data-table styling
