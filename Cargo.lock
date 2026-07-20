@@ -125,7 +125,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "ara-cli"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "ara-core",
  "arc-swap",
@@ -148,7 +148,7 @@ dependencies = [
 
 [[package]]
 name = "ara-core"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "dagre-dgl-rs",
  "insta",
@@ -160,7 +160,7 @@ dependencies = [
 
 [[package]]
 name = "ara-viewer"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "ara-core",
  "console_error_panic_hook",
@@ -168,6 +168,7 @@ dependencies = [
  "gloo-net 0.7.0",
  "js-sys",
  "leptos",
+ "pulldown-cmark",
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -177,7 +178,7 @@ dependencies = [
 
 [[package]]
 name = "ara-wasm"
-version = "0.1.10"
+version = "0.1.11"
 
 [[package]]
 name = "arc-swap"
@@ -1999,6 +2000,24 @@ dependencies = [
  "version_check",
  "yansi",
 ]
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+dependencies = [
+ "bitflags",
+ "memchr",
+ "pulldown-cmark-escape",
+ "unicase",
+]
+
+[[package]]
+name = "pulldown-cmark-escape"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
 
 [[package]]
 name = "quote"

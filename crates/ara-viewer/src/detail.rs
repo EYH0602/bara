@@ -57,6 +57,8 @@ pub struct ExhibitView {
     pub kind: String,
     /// Origin of the exhibit, when stated.
     pub source: Option<String>,
+    /// Raw markdown body, verbatim (rendered client-side; issue #32).
+    pub body: String,
 }
 
 /// A single typed field entry in the per-kind section.
@@ -193,6 +195,7 @@ pub fn detail_model(node: &Node, manifest: &Manifest) -> DetailModel {
                     file: ex.file.clone(),
                     kind: exhibit_kind_label(&ex.kind).to_string(),
                     source: ex.source.clone(),
+                    body: ex.body.clone(),
                 })
         })
         .collect();
@@ -542,9 +545,10 @@ fn render_detail(m: DetailModel) -> impl IntoView {
             }}
 
             // ── 6. Result (exhibits linked to this node) ───────────────────
-            // Chips + linkage ONLY — no exhibit `body` / table rendering (that
-            // is deferred to a follow-up issue). Each chip shows the exhibit id
-            // + kind label; the file/source is a hover tooltip on the chip.
+            // A chip row (id + kind label, file/source as hover tooltip) over
+            // the rendered exhibit bodies: each non-empty `body` is GFM markdown
+            // rendered client-side to HTML and mounted via `inner_html` in a
+            // `.exhibit-body` scroll container (issue #32, see `markdown.rs`).
             {if !m.result_exhibits.is_empty() {
                 Some(view! {
                     <div class="block result-block">
@@ -558,6 +562,12 @@ fn render_detail(m: DetailModel) -> impl IntoView {
                                 }
                             }).collect::<Vec<_>>()}
                         </div>
+                        {m.result_exhibits.iter().filter(|ex| !ex.body.trim().is_empty()).map(|ex| {
+                            let rendered = crate::markdown::render_exhibit_body(&ex.body);
+                            view! {
+                                <div class="exhibit-body" inner_html=rendered></div>
+                            }
+                        }).collect::<Vec<_>>()}
                     </div>
                 })
             } else {
