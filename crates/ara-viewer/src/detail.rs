@@ -57,6 +57,8 @@ pub struct ExhibitView {
     pub kind: String,
     /// Origin of the exhibit, when stated.
     pub source: Option<String>,
+    /// Raw markdown body, verbatim (rendered client-side; issue #32).
+    pub body: String,
 }
 
 /// A single typed field entry in the per-kind section.
@@ -193,6 +195,7 @@ pub fn detail_model(node: &Node, manifest: &Manifest) -> DetailModel {
                     file: ex.file.clone(),
                     kind: exhibit_kind_label(&ex.kind).to_string(),
                     source: ex.source.clone(),
+                    body: ex.body.clone(),
                 })
         })
         .collect();
@@ -558,6 +561,12 @@ fn render_detail(m: DetailModel) -> impl IntoView {
                                 }
                             }).collect::<Vec<_>>()}
                         </div>
+                        {m.result_exhibits.iter().filter(|ex| !ex.body.trim().is_empty()).map(|ex| {
+                            let rendered = crate::markdown::render_exhibit_body(&ex.body);
+                            view! {
+                                <div class="exhibit-body" inner_html=rendered></div>
+                            }
+                        }).collect::<Vec<_>>()}
                     </div>
                 })
             } else {

@@ -28,6 +28,10 @@ serde_json = "1"
 # get_bounding_client_rect() (via leptos::web_sys) needs the DomRect feature;
 # enabled on ALL targets so the lib compiles on native too.
 web-sys = { version = "0.3", features = ["DomRect"] }
+# Client-side markdown → HTML for exhibit bodies (issue #32). default-features
+# off drops the CLI/getopts bits; we keep only the HTML renderer and enable the
+# GFM table + strikethrough extensions at call time via Options.
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 
 # Browser-only networking deps.  Gated to wasm32 so `cargo test --workspace`
 # (which builds for the native host) continues to compile without a browser.
