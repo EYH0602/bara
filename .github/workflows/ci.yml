@@ -20,7 +20,7 @@ jobs:
     name: fmt
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Toolchain (1.94.1 + rustfmt/clippy + wasm target) is auto-installed by
       # rustup from rust-toolchain.toml on the first cargo invocation.
       - run: cargo fmt --all --check
@@ -29,7 +29,7 @@ jobs:
     name: clippy
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
@@ -41,7 +41,7 @@ jobs:
       # back only the opt-in `RUN_CORPUS_SWEEP=1` sweep, which is `#[ignore]`d.
       # The default test suite (incl. the always-on vendored no-panic net) runs
       # without them; a fresh checkout must stay green. Do not add `submodules:`.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - run: cargo test --workspace --locked
 
@@ -49,7 +49,7 @@ jobs:
     name: wasm
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       # Guards the full native + wasm dual-build path (the shared core AND the
       # browser-facing cdylib), not just ara-core.
@@ -59,7 +59,7 @@ jobs:
     name: viewer-size
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       # brotli is used for the compressed-size measurement. We do NOT install
       # binaryen (wasm-opt) from apt: ubuntu-24.04's binaryen is too old for the
@@ -116,7 +116,7 @@ jobs:
     # SOURCE (deterministic, toolchain-independent), so this job needs no trunk
     # or wasm toolchain and stays fast. Regenerate with scripts/embed-viewer.sh.
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: scripts/embed-viewer.sh --check
 
   viewer-web-test:
@@ -126,7 +126,7 @@ jobs:
     # the wasm-bindgen-test headless-browser layer.  `wasm` only does a
     # compile-only build check; this job actually executes the browser tests.
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       # Ubuntu 24.04 GitHub runners ship with Chrome; no additional install step
       # is needed.  wasm-pack downloads the matching chromedriver automatically.
@@ -149,7 +149,7 @@ jobs:
     # action — but this repo always dogfoods HEAD, so it builds from source.
     # No `submodules:` — the two official fixtures ship in a plain checkout.
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - name: Build ara
         run: cargo build --locked
@@ -208,7 +208,7 @@ jobs:
     # bundled fixture ARA root. Kept a separate job (Docker/buildx setup) so it
     # doesn't slow the Rust jobs. Registry push on tags is deferred (no secrets).
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Build image
